@@ -1,12 +1,9 @@
 import numpy as np
-import scipy.signal
-from gym.spaces import Box, Discrete
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.normal import Normal
 from torch.distributions.categorical import Categorical
+from torch.distributions.normal import Normal
 
 
 def combined_shape(length, shape=None):
@@ -14,12 +11,14 @@ def combined_shape(length, shape=None):
         return (length,)
     return (length, shape) if np.isscalar(shape) else (length, *shape)
 
+
 def mlp(sizes, activation, output_activation=nn.Identity):
     layers = []
-    for j in range(len(sizes)-1):
-        act = activation if j < len(sizes)-2 else output_activation
-        layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
+    for j in range(len(sizes) - 1):
+        act = activation if j < len(sizes) - 2 else output_activation
+        layers += [nn.Linear(sizes[j], sizes[j + 1]), act()]
     return nn.Sequential(*layers)
+
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
@@ -28,11 +27,13 @@ def count_vars(module):
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
+
+# ---------------------------------------- DISCRETE ACTOR CRITIC -----------------------------------#
+
 class CategoricalActor(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
-
 
     def forward(self, obs, deterministic=False, with_logprob=True):
         action_logits = self.logits_net(obs)
@@ -59,12 +60,24 @@ class DiscreteMLPQFunction(nn.Module):
         self.q = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
     def forward(self, obs):
+        if not torch.is_tensor(obs):
+            obs = torch.as_tensor(obs, dtype=torch.float32)
         q_vals = self.q(obs)
         return q_vals
 
+
+class DiscreteMLPValueFunction(nn.Module):
+    def __init__(self, obs_dim, hidden_sizes, activation):
+        super().__init__()
+        self.v_net = mlp([obs_dim] + list(hidden_sizes) + [1], activation)
+
+    def forward(self, obs):
+        return torch.squeeze(self.v_net(obs), -1)  # Critical to ensure v has right shape.
+
+
 class DiscreteMLPActorCritic(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256),
                  activation=nn.ReLU):
         super().__init__()
 
@@ -75,11 +88,47 @@ class DiscreteMLPActorCritic(nn.Module):
         self.pi = CategoricalActor(obs_dim, act_dim, hidden_sizes, activation)
         self.q1 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         self.q2 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        # self.v = DiscreteMLPValueFunction(obs_dim, hidden_sizes, activation)
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
-            a, _ , _= self.pi(obs, deterministic, False)
+            a, _, _ = self.pi(obs, deterministic, False)
             return a.numpy()
+
+    def select_action(self, obs, test=True):
+        action = self.act(obs, test)
+        return int(action)
+
+    def get_value_estimate(self, obs, action):
+        if torch.is_tensor(action):
+            action = int(action.detach().numpy())
+
+        with torch.no_grad():
+            # gets the q values for all the actions
+            q1_vals = self.q1(obs).detach().numpy()
+            q2_vals = self.q2(obs).detach().numpy()
+
+        # get the q_val for the specific actions
+        q1_val = q1_vals[action]
+        # q2_val = q2_vals[action]
+
+        # use the min q-vals as is done in the double q-learning technique for more accurate q-estimates
+        # return min(q1_val, q2_val)
+        return q1_val
+
+    def get_max_value_estimate(self, obs):
+        with torch.no_grad():
+            # gets the q values for all the actions
+            q1_vals = self.q1(obs).detach()
+            # q2_vals = self.q2(obs).detach()
+            # use the min q-vals as is done in the double q-learning technique for more accurate q-estimates
+            # q_vals = torch.min(q1_vals, q2_vals)
+            max_q_val = q1_vals.max().numpy()
+
+        return max_q_val
+
+
+# ---------------------------------------- CONTINUOUS ACTOR CRITIC ----------------------------------- #
 
 class SquashedGaussianMLPActor(nn.Module):
 
@@ -88,7 +137,9 @@ class SquashedGaussianMLPActor(nn.Module):
         self.net = mlp([obs_dim] + list(hidden_sizes), activation, activation)
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
-        self.act_limit = act_limit
+        # self.act_limit = act_limit
+        # ensure that action limit is set distinctly for each action in the action-space
+        self.act_limit = torch.as_tensor(act_limit, dtype=torch.float32)
 
     def forward(self, obs, deterministic=False, with_logprob=True):
         net_out = self.net(obs)
@@ -112,7 +163,7 @@ class SquashedGaussianMLPActor(nn.Module):
             # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
             # Try deriving it yourself as a (very difficult) exercise. :)
             logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
-            logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+            logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
         else:
             logp_pi = None
 
@@ -130,11 +181,12 @@ class MLPQFunction(nn.Module):
 
     def forward(self, obs, act):
         q = self.q(torch.cat([obs, act], dim=-1))
-        return torch.squeeze(q, -1) # Critical to ensure q has right shape.
+        return torch.squeeze(q, -1)  # Critical to ensure q has right shape.
+
 
 class MLPActorCritic(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256),
                  activation=nn.ReLU):
         super().__init__()
 
@@ -151,3 +203,30 @@ class MLPActorCritic(nn.Module):
         with torch.no_grad():
             a, _ = self.pi(obs, deterministic, False)
             return a.numpy()
+
+    def get_value_estimate(self, obs, action):
+        # ensure that the observation and action are tensors
+        obs = torch.as_tensor(obs, dtype=torch.float32)
+        action = torch.as_tensor(action, dtype=torch.float32)
+
+        with torch.no_grad():
+            q1_val = self.q1(obs, action).detach().numpy()
+
+        return q1_val
+
+    def get_max_value_estimate(self, obs):
+        # ensure that the observation is a tensors
+        obs = torch.as_tensor(obs, dtype=torch.float32)
+
+        with torch.no_grad():
+            # get the best action via the agents policy network
+            best_action, _ = self.pi(obs, deterministic=True, with_logprob=False)
+
+            # use the 'best action' to get an estimate of the max q value
+            max_q_val = self.q1(obs, best_action).detach().numpy()
+
+        return max_q_val
+
+    def select_action(self, obs, test=True):
+        action = self.act(obs, test)
+        return action
