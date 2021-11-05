@@ -33,7 +33,9 @@ class RandomisedSacBuffer:
                      act=self.act_buf[idxs],
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs])
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
+        use_cuda = torch.cuda.is_available()
+        device = torch.device("cuda" if use_cuda else "cpu")
+        return {k: torch.as_tensor(v, dtype=torch.float32, device=device) for k, v in batch.items()}
 
 
 class RandomisedAGACBuffer(RandomisedSacBuffer):
