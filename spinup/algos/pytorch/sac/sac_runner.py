@@ -131,4 +131,5 @@ if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
         # train_subagent(map_num=i, agent_name='rg', discrete=False)
-    run_honest_agent(map_num=23, discrete=False)
+    # run_honest_agent(map_num=23, discrete=False)
+    print(torch.cuda.is_available())
