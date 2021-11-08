@@ -45,7 +45,7 @@ class SacBaseAgent(ABC):
             seed=42,
             steps_per_epoch=4000,
             start_steps=10000,
-            num_test_episodes=4,
+            num_test_episodes=2,
             num_epochs=100,
             replay_size=int(1e6),
             save_freq=1,
@@ -577,7 +577,7 @@ class DiscreteSacAgent(SacBaseAgent):
 class SacFactory:
     @staticmethod
     def create(state_space, action_space, subagent_name, experiment_name, discount_rate, discrete=True, num_epochs=100,
-               pi_lr=1e-3, critic_lr=1e-3):
+               pi_lr=1e-3, critic_lr=1e-3, hidden_dim=64, batch_size=100):
         if discrete:
             return DiscreteSacAgent(state_space=state_space,
                                     action_space=action_space,
@@ -587,14 +587,15 @@ class SacFactory:
                                     critic_lr=critic_lr,
                                     pi_lr=pi_lr,
                                     discount_rate=discount_rate,
+                                    hidden_dimension=hidden_dim,
+                                    batch_size=batch_size,
                                     start_steps=40000,
                                     max_ep_len=49 ** 2,
                                     steps_per_epoch=10000,
                                     policy_update_delay=1,
                                     seed=42,
                                     alpha=0.2,
-                                    polyak=0.995,
-                                    hidden_dimension=64)
+                                    polyak=0.995)
         else:
             return ContinuousSacAgent(state_space=state_space,
                                       action_space=action_space,
@@ -604,13 +605,14 @@ class SacFactory:
                                       critic_lr=critic_lr,
                                       pi_lr=pi_lr,
                                       discount_rate=discount_rate,
+                                      hidden_dimension=hidden_dim,
+                                      batch_size=batch_size,
                                       start_steps=10000,
                                       max_ep_len=49 ** 2,
                                       steps_per_epoch=4000,
                                       seed=42,
-                                      alpha=0.1    ,
-                                      polyak=0.995,
-                                      hidden_dimension=64)
+                                      alpha=0.1,
+                                      polyak=0.995)
 
 
 if __name__ == '__main__':

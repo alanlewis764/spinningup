@@ -63,7 +63,9 @@ def train_subagent(map_num, agent_name, discrete=True):
                               discrete=discrete,
                               num_epochs=200,
                               pi_lr=1e-3,
-                              critic_lr=1e-3)
+                              critic_lr=1e-3,
+                              batch_size=64,
+                              hidden_dim=64)
     agent.train(train_env=train_env, test_env=test_env)
 
 
@@ -130,6 +132,5 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-        # train_subagent(map_num=i, agent_name='rg', discrete=False)
+    train_subagent(map_num=36, agent_name='rg', discrete=True)
     # run_honest_agent(map_num=23, discrete=False)
-    print(torch.cuda.is_available())
