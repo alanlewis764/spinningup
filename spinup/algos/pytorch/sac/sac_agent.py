@@ -89,6 +89,8 @@ class SacBaseAgent(ABC):
         # store details to track performance
         self.episode_reward = 0
         self.episode_length = 0
+        self.test_episode_length = 0
+        self.test_episode_reward = 0
         self.epoch_number = 0
         # a count dict to track how much the agent has visited a state during training
         self.test_state_visitation_dict = defaultdict(int)
@@ -180,11 +182,13 @@ class SacBaseAgent(ABC):
 
     def end_trajectory(self, test=False):
         if test:
-            self.logger.store(TestEpRet=self.episode_reward, TestEpLen=self.episode_length)
+            self.logger.store(TestEpRet=self.test_episode_reward, TestEpLen=self.test_episode_length)
+            self.test_episode_reward = 0
+            self.test_episode_length = 0
         else:
             self.logger.store(EpRet=self.episode_reward, EpLen=self.episode_length)
-        self.episode_reward = 0
-        self.episode_length = 0
+            self.episode_reward = 0
+            self.episode_length = 0
 
     def learn(self, time_step):
         # We only want to update the model after a certain number of experiences have been collected.
@@ -215,6 +219,7 @@ class SacBaseAgent(ABC):
             # adjust the learning rate at each epoch
             self.q_lr_schedule.step()
             self.pi_lr_schedule.step()
+            # self.alpha *= 0.975
 
     def log_stats(self, time_step, epoch_number=None):
         epoch_number = self.epoch_number if epoch_number is None else epoch_number
@@ -242,8 +247,8 @@ class SacBaseAgent(ABC):
             state = env.reset()
             self.test_state_visitation_dict[str(tuple(map(int, state)))] += 1
             done = False
-            self.episode_length = 0
-            while not (done or (self.episode_length == self.max_ep_len)):
+            self.test_episode_length = 0
+            while not (done or (self.test_episode_length == self.max_ep_len)):
                 # Act deterministically because we are being tested
                 action = self.get_action(state, deterministic=True)
                 next_state, reward, done, _ = env.step(action)
@@ -251,8 +256,8 @@ class SacBaseAgent(ABC):
                 self.test_state_visitation_dict[str(tuple(map(int, state)))] += 1
                 if type(reward) == dict:
                     reward = reward[self.name]
-                self.episode_reward += reward
-                self.episode_length += 1
+                self.test_episode_reward += reward
+                self.test_episode_length += 1
                 state = next_state
             self.test_state_visitation_dict[str(tuple(map(int, state)))] += 1
             self.end_trajectory(test=True)
@@ -262,6 +267,7 @@ class SacBaseAgent(ABC):
         start_time = time.time()
         state = train_env.reset()
         self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
+        ep_reward = 0
 
         # collect experiences and update every epoch
         for t in range(total_steps):
@@ -275,12 +281,16 @@ class SacBaseAgent(ABC):
                 action = train_env.action_space.sample()
 
             next_state, reward, done, _ = train_env.step(action)
+            ep_reward += reward['rg']
             # done = False if self.episode_length == self.max_ep_len else done
             self.add_experience(state, action, reward, next_state, done)
             state = next_state
 
             # end of trajectory
             if done or self.episode_length == self.max_ep_len:
+                print("episode steps = ", self.episode_length)
+                print("episode rewards =", ep_reward)
+                ep_reward = 0
                 self.end_trajectory()
                 self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
                 state = train_env.reset()
@@ -396,8 +406,8 @@ class ContinuousSacAgent(SacBaseAgent):
         # make optimisers for the actor and the critic
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
-        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=1)
-        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=1)
+        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=0.95)
+        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=0.95)
 
         # set up model saving
         self.logger.setup_pytorch_saver(self.actor_critic)
@@ -460,7 +470,7 @@ class DiscreteSacAgent(SacBaseAgent):
                  pi_lr=1e-3, critic_lr=1e-3, update_every=50, update_after=1000, max_ep_len=1000, seed=42,
                  steps_per_epoch=4000, start_steps=10000, num_test_episodes=10, num_epochs=100, replay_size=int(1e6),
                  save_freq=1, batch_size=100, polyak=0.995, policy_update_delay=2, alpha=0.2, experiment_name='ignore',
-                 agent_name='rg') -> None:
+                 agent_name='rg', learning_decay=0.95) -> None:
         super().__init__(state_space, action_space, discount_rate, pi_lr, critic_lr, update_every, update_after,
                          max_ep_len, seed, steps_per_epoch, start_steps, num_test_episodes, num_epochs, replay_size,
                          save_freq, batch_size, polyak, policy_update_delay, alpha, experiment_name, agent_name)
@@ -489,10 +499,11 @@ class DiscreteSacAgent(SacBaseAgent):
         self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n' % self.var_counts)
 
         # make optimisers for the actor and the critic
+        self.learning_decay = learning_decay
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
-        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=0.95)
-        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=0.95)
+        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=self.learning_decay)
+        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=self.learning_decay)
 
         # set up model saving
         self.logger.setup_pytorch_saver(self.actor_critic)
@@ -531,7 +542,7 @@ class DiscreteSacAgent(SacBaseAgent):
                 "Rewards, dones and q values do not have the same dimension"
 
             # determine backup (see SAC paper for more details on this derivation)
-            backup = rewards + self.discount_rate * (1 - dones) * (target_q)
+            backup = rewards + self.discount_rate * (1 - dones) * (target_q - self.alpha * log_pi_next_actions)
 
         # compute losses using MSE
         # F.mse_loss(current_Q1, target_Q)
@@ -577,7 +588,8 @@ class DiscreteSacAgent(SacBaseAgent):
 class SacFactory:
     @staticmethod
     def create(state_space, action_space, subagent_name, experiment_name, discount_rate, discrete=True, num_epochs=100,
-               pi_lr=1e-3, critic_lr=1e-3, hidden_dim=64, batch_size=100):
+               pi_lr=1e-3, critic_lr=1e-3, hidden_dim=64, batch_size=100, max_ep_len=49**2, learning_decay=0.95,
+               alpha=0.2):
         if discrete:
             return DiscreteSacAgent(state_space=state_space,
                                     action_space=action_space,
@@ -589,12 +601,15 @@ class SacFactory:
                                     discount_rate=discount_rate,
                                     hidden_dimension=hidden_dim,
                                     batch_size=batch_size,
+                                    max_ep_len=max_ep_len,
+                                    learning_decay=learning_decay,
+                                    alpha=alpha,
+                                    save_freq=1,
+                                    num_test_episodes=1,
                                     start_steps=40000,
-                                    max_ep_len=49 ** 2,
                                     steps_per_epoch=10000,
                                     policy_update_delay=1,
                                     seed=42,
-                                    alpha=0.2,
                                     polyak=0.995)
         else:
             return ContinuousSacAgent(state_space=state_space,
@@ -607,66 +622,9 @@ class SacFactory:
                                       discount_rate=discount_rate,
                                       hidden_dimension=hidden_dim,
                                       batch_size=batch_size,
-                                      start_steps=10000,
+                                      start_steps=40000,
                                       max_ep_len=49 ** 2,
-                                      steps_per_epoch=4000,
+                                      steps_per_epoch=10000,
                                       seed=42,
-                                      alpha=0.1,
+                                      alpha=0.2,
                                       polyak=0.995)
-
-
-if __name__ == '__main__':
-    env_number = 7
-    # train_env, map_name = read_map(env_number, random_start=False, terminate_at_any_goal=True, discrete=False)
-    # test_env = deepcopy(train_env)
-    # continuous_agent = ContinuousSacAgent(state_space=test_env.observation_space,
-    #                                       action_space=test_env.action_space,
-    #                                       agent_name='rg',
-    #                                       experiment_name=f'continuous-pretrained-sac-{map_name}{env_number}',
-    #                                       start_steps=20000,
-    #                                       max_ep_len=49 ** 2,
-    #                                       steps_per_epoch=4000,
-    #                                       num_epochs=100,
-    #                                       # discount_rate=0.975,
-    #                                       seed=42,
-    #                                       alpha=0.2,
-    #                                       polyak=0.995,
-    #                                       hidden_dimension=64,
-    #                                       critic_lr=1e-3,
-    #                                       pi_lr=1e-3)
-    # continuous_agent.train(train_env=train_env, test_env=test_env)
-
-    env, map_name = read_map(env_number, random_start=False, terminate_at_any_goal=False, discrete=False,
-                             goal_name='fg4')
-
-    state = env.reset()
-    dt1 = []
-    dt2 = []
-    agent = torch.load(
-        sacPathManager.get_path(agent_type='sac', map_name=f'{map_name}{env_number}', agent_name='fg4', discrete=False)
-    )
-
-    accum_reward = 0
-    for t in range(1000):
-        env.render()
-
-        start = time.time()
-        state = torch.tensor(state, dtype=torch.float32)
-        action = agent.act(state, deterministic=True)
-        end = time.time()
-
-        dt1.append(end - start)
-
-        start = time.time()
-        state, reward, done, info = env.step(action)
-        accum_reward += reward['fg1']
-        print("accum reward:", accum_reward)
-        end = time.time()
-        dt2.append(end - start)
-
-        if done:
-            print("Episode finished after {} timesteps".format(t + 1))
-            break
-
-    print(f"accumulated reward: {accum_reward}")
-    print(sum(dt1) / len(dt1), sum(dt2) / len(dt2))
