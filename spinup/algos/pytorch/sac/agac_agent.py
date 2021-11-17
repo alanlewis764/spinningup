@@ -14,15 +14,17 @@ import torch.nn.functional as F
 from spinup.utils.minigrid_utils import make_simple_env
 from spinup.utils.run_utils import setup_logger_kwargs
 from torch.optim import Adam
-import python.path_manager as constants
 
 # local stuff
 import spinup.algos.pytorch.sac.core as core
-from intention_recognition import Adversary, OnlineSacAdversary, PretrainedSacAdversary
-from python.display_utils import VideoViewer
 from spinup.utils.buffers import RandomisedAGACBuffer
 from spinup.utils.logx import EpochLogger
 from torch.optim.lr_scheduler import ExponentialLR
+
+from python.intention_recognition import Adversary, OnlineSacAdversary, PretrainedSacAdversary
+from python.display_utils import VideoViewer
+import python.path_manager as constants
+import python.utils as utils
 
 
 class AGACBaseAgent(ABC):
@@ -43,12 +45,14 @@ class AGACBaseAgent(ABC):
             num_epochs=100,
             replay_size=int(1e6),
             save_freq=1,
-            batch_size=100,
+            batch_size=124,
             polyak=0.995,
             alpha=0.2,  # entropy coefficient
-            beta=1.0,  # deceptiveness coefficient
+            beta=0.5,  # deceptiveness coefficient
             tau=1.0,  # temperature term to soften q-differences and therefore get a better spread of deceptive_values
-            deception_type='entropy',
+            deceptiveness_measure='entropy',
+            start_state=None,
+            candidate_goals=None,
             experiment_name='agac-base-class',
             agent_name='rg'
     ) -> None:
@@ -95,6 +99,11 @@ class AGACBaseAgent(ABC):
         # a map to determine the level of deceptiveness for each state
         self.deceptiveness_dict = defaultdict(float)
 
+        # needed to determine deceptiveness value
+        self.deceptiveness_measure = deceptiveness_measure
+        self.start_state = start_state
+        self.candidate_goals = candidate_goals
+
         # store replay buffer store
         self.replay_size = replay_size
         self.save_freq = save_freq
@@ -119,10 +128,6 @@ class AGACBaseAgent(ABC):
 
         # video viewer to look at agent performance
         self.video_viewer = VideoViewer()
-
-        # not part of the actual agent
-        self.bottom_right = False
-        self.deception_type = deception_type
 
     def update(self, data):
         # do a gradient descent step for q function
@@ -161,6 +166,10 @@ class AGACBaseAgent(ABC):
     def select_action(self, state, deterministic=False):
         self.get_action(state, deterministic)
 
+    def get_deceptiveness(self, x0, y0, x, y):
+        return utils.deceptiveness(goals=self.candidate_goals, x0=x0, y0=y0, x=x, y=y,
+                                   measure=self.deceptiveness_measure)
+
     def add_experience(self, state, action, reward, next_state, done):
         # if the reward gets passed in as a dict, then extract the reward using the agent name
         if type(reward) == dict:
@@ -169,12 +178,11 @@ class AGACBaseAgent(ABC):
         self.episode_length += 1
 
         # use the adversary model to generate deceptive_values and give the relevant deceptiveness measure
-        self.adversary.update(state, action)
-        if self.deception_type == 'entropy':
-            deceptiveness = self.adversary.entropy_of_probabilities()
-        else:
-            rg_prob = self.adversary.probability_of_real_goal()
-            deceptiveness = 1 - rg_prob
+        # self.adversary.update(state, action)
+        x, y = state[0], state[1]
+        x0, y0 = self.start_state
+        deceptiveness = self.get_deceptiveness(x0=x0, y0=y0, x=x, y=y)
+
         if not done:
             self.deceptiveness_dict[str(next_state)] = deceptiveness
 
@@ -260,11 +268,9 @@ class AGACBaseAgent(ABC):
 
                 # get your real goal deceptive_values since we have our state-action pair
                 self.adversary.update(state=state, action=action)
-                if self.deception_type == 'entropy':
-                    deceptiveness = self.adversary.entropy_of_probabilities()
-                else:
-                    rg_prob = self.adversary.probability_of_real_goal()
-                    deceptiveness = 1 - rg_prob
+                x, y = state[0], state[1]
+                x0, y0 = self.start_state
+                deceptiveness = self.get_deceptiveness(x0=x0, y0=y0, x=x, y=y)
 
                 # step through the environment
                 next_state, reward, done, _ = env.step(action)
@@ -330,10 +336,6 @@ class AGACBaseAgent(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def compute_loss_v(self, data):
-        raise NotImplementedError
-
-    @abstractmethod
     def get_action(self, state, deterministic=False):
         raise NotImplementedError
 
@@ -347,19 +349,62 @@ class AGACBaseAgent(ABC):
 
 
 class DiscreteAGACAgent(AGACBaseAgent):
-    def __init__(self, state_space, action_space, all_models, all_model_names, hidden_dimension=64, num_hidden_layers=2,
-                 discount_rate=0.99, pi_lr=1e-3, critic_lr=1e-3, update_every=50, update_after=1000, max_ep_len=1000,
-                 seed=42, steps_per_epoch=4000, start_steps=10000, num_test_episodes=10, num_epochs=100,
-                 replay_size=int(1e6), save_freq=1.0, batch_size=100, polyak=0.995, alpha=0.2, beta=1.0,
+    def __init__(self, state_space,
+                 action_space,
+                 all_models,
+                 all_model_names,
+                 hidden_dimension=64,
+                 num_hidden_layers=2,
+                 discount_rate=0.99,
+                 pi_lr=1e-3,
+                 critic_lr=1e-3,
+                 update_every=50,
+                 update_after=1000,
+                 max_ep_len=1000,
+                 seed=42,
+                 steps_per_epoch=4000,
+                 start_steps=10000,
+                 num_test_episodes=10,
+                 num_epochs=100,
+                 replay_size=int(1e6),
+                 save_freq=1.0,
+                 batch_size=100,
+                 polyak=0.995,
+                 alpha=0.2,
+                 beta=1.0,
                  lr_decay_rate=0.95,
-                 tau=1.0, q_difference_queue_length=5000, deception_type='entropy',
-                 experiment_name='discrete-agac-agent', agent_name='rg') -> None:
-        super().__init__(state_space=state_space, action_space=action_space, discount_rate=discount_rate, pi_lr=pi_lr,
-                         critic_lr=critic_lr, update_every=update_every, update_after=update_after,
-                         max_ep_len=max_ep_len, seed=seed, steps_per_epoch=steps_per_epoch, start_steps=start_steps,
-                         num_test_episodes=num_test_episodes, num_epochs=num_epochs, replay_size=replay_size,
-                         save_freq=save_freq, batch_size=batch_size, polyak=polyak, alpha=alpha, beta=beta, tau=tau,
-                         deception_type=deception_type, experiment_name=experiment_name, agent_name=agent_name)
+                 tau=1.0,
+                 q_difference_queue_length=5000,
+                 deceptiveness_measure='entropy',
+                 start_state=None,
+                 candidate_goals=None,
+                 experiment_name='discrete-agac-agent',
+                 agent_name='rg') -> None:
+        super().__init__(state_space=state_space,
+                         action_space=action_space,
+                         discount_rate=discount_rate,
+                         pi_lr=pi_lr,
+                         critic_lr=critic_lr,
+                         update_every=update_every,
+                         update_after=update_after,
+                         max_ep_len=max_ep_len,
+                         seed=seed,
+                         steps_per_epoch=steps_per_epoch,
+                         start_steps=start_steps,
+                         num_test_episodes=num_test_episodes,
+                         num_epochs=num_epochs,
+                         replay_size=replay_size,
+                         save_freq=save_freq,
+                         batch_size=batch_size,
+                         polyak=polyak,
+                         alpha=alpha,
+                         beta=beta,
+                         tau=tau,
+                         deceptiveness_measure=deceptiveness_measure,
+                         start_state=start_state,
+                         candidate_goals=candidate_goals,
+                         experiment_name=experiment_name,
+                         agent_name=agent_name)
         self.action_dim = action_space.n  # this is different to the continuous version
         self.lr_decay_rate = lr_decay_rate
 
@@ -407,32 +452,34 @@ class DiscreteAGACAgent(AGACBaseAgent):
             'next_obs'], data['done'], data['deceptiveness']
 
         q1 = self.actor_critic.q1(states)
-        q1 = q1.gather(1, actions.long())
-
         q2 = self.actor_critic.q2(states)
+
+        q1 = q1.gather(1, actions.long())
         q2 = q2.gather(1, actions.long())
 
         # do Bellman backup for Q functions
         with torch.no_grad():
-            # use the target network to get the actions given the next state
-            next_actions, next_action_probs, next_log_action_probs = self.target_actor_critic.pi(next_states)
+            # Target actions come from *current* policy
+            next_actions, next_action_probs, next_log_action_probs = self.actor_critic.pi(next_states)
 
             # target q-values use the next states and next actions
             target_q1 = self.target_actor_critic.q1(next_states)
-            target_q1 = target_q1.gather(1, next_actions.long())
+            # target_q1 = target_q1.gather(1, next_actions.long())
+            target_q1 = (next_action_probs * target_q1).sum(dim=1, keepdim=True)
 
             target_q2 = self.target_actor_critic.q2(next_states)
-            target_q2 = target_q2.gather(1, next_actions.long())
+            # target_q2 = target_q2.gather(1, next_actions.long())
+            target_q2 = (next_action_probs * target_q2).sum(dim=1, keepdim=True)
 
             target_q = torch.min(target_q1, target_q2)
+            log_pi_next_actions = (next_action_probs * next_log_action_probs).sum(dim=1, keepdim=True)
 
             rewards = rewards.unsqueeze(-1)
             dones = dones.unsqueeze(-1)
             deceptiveness_scores = deceptiveness.unsqueeze(dim=-1)
-            assert rewards.shape == target_q.shape == dones.shape == deceptiveness_scores.shape, \
-                "Rewards, dones, deceptiveness-scores and q-values do not have the same dimension"
+            assert rewards.shape == target_q.shape == dones.shape == deceptiveness_scores.shape == log_pi_next_actions.shape, "Rewards, dones, deceptiveness-scores and q-values do not have the same dimension"
 
-            backup = rewards + self.beta * deceptiveness_scores + self.discount_rate * (1 - dones) * target_q
+            backup = rewards + self.beta * deceptiveness_scores + self.discount_rate * (1 - dones) * (target_q - self.alpha * log_pi_next_actions)
 
         # compute losses using MSE
         loss_q1 = F.mse_loss(q1, backup)
@@ -477,38 +524,6 @@ class DiscreteAGACAgent(AGACBaseAgent):
         action = self.actor_critic.act(torch.as_tensor(state, dtype=torch.float32), deterministic=deterministic)
         return int(action)
 
-        # action = 'DONE'
-        # if not self.bottom_right:
-        #     action = self.go_to_bottom_right(state)
-        # if not action == 'DONE':
-        #     return action
-        # return self.snake(state)
-
-    def snake(self, state):
-        x, y, _ = state
-        if y % 2 == 0:
-            if x == 1:
-                return 2
-            else:
-                return 0
-        else:
-            if x == 47:
-                return 2
-            else:
-                return 1
-
-    def go_to_bottom_right(self, state):
-        x, y, _ = state
-        if x == 47 and y == 47:
-            self.bottom_right = True
-            return 'DONE'
-        if x < 47 and y < 47:
-            return 7
-        if x < 47:
-            return 1
-        if y < 47:
-            return 3
-
     def get_value_estimate(self, state, action):
         return self.actor_critic.get_value_estimate(state, action)
 
@@ -533,9 +548,6 @@ class DiscreteAGACAgent(AGACBaseAgent):
             next_state, reward, done, info = env.step(action)
             # no need to update the agent
             state = next_state
-
-    def compute_loss_v(self, data):
-        pass
 
 
 class DiscretePretrainedAGACAgent(DiscreteAGACAgent):
@@ -567,7 +579,7 @@ class DiscretePretrainedAGACAgent(DiscreteAGACAgent):
                  lr_decay_rate=0.95,
                  tau=1.0,
                  q_difference_queue_length=5000,
-                 deception_type='entropy',
+                 deceptiveness_measure='entropy',
                  experiment_name='discrete-agac-agent',
                  agent_name='rg') -> None:
         super().__init__(state_space=state_space,
@@ -596,7 +608,7 @@ class DiscretePretrainedAGACAgent(DiscreteAGACAgent):
                          lr_decay_rate=lr_decay_rate,
                          tau=tau,
                          q_difference_queue_length=q_difference_queue_length,
-                         deception_type=deception_type,
+                         deceptiveness_measure=deceptiveness_measure,
                          experiment_name=experiment_name,
                          agent_name=agent_name)
         self.adversary = PretrainedSacAdversary(state_space=state_space,
@@ -608,64 +620,64 @@ class DiscretePretrainedAGACAgent(DiscreteAGACAgent):
 
 
 class DiscreteOnlineAGACAgent(DiscreteAGACAgent):
-    def __init__(self, 
-                 state_space, 
-                 action_space, 
-                 all_models, 
-                 all_model_names, 
-                 hidden_dimension=64, 
+    def __init__(self,
+                 state_space,
+                 action_space,
+                 all_models,
+                 all_model_names,
+                 hidden_dimension=64,
                  num_hidden_layers=2,
-                 discount_rate=0.99, 
-                 pi_lr=1e-3, 
-                 critic_lr=1e-3, 
-                 update_every=50, 
-                 update_after=1000, 
+                 discount_rate=0.99,
+                 pi_lr=1e-3,
+                 critic_lr=1e-3,
+                 update_every=50,
+                 update_after=1000,
                  max_ep_len=1000,
-                 seed=42, 
-                 steps_per_epoch=4000, 
-                 start_steps=10000, 
-                 num_test_episodes=10, 
+                 seed=42,
+                 steps_per_epoch=4000,
+                 start_steps=10000,
+                 num_test_episodes=10,
                  num_epochs=100,
-                 replay_size=int(1e6), 
-                 save_freq=1, 
-                 batch_size=100, 
-                 polyak=0.995, 
-                 alpha=0.2, 
-                 beta=1, 
+                 replay_size=int(1e6),
+                 save_freq=1,
+                 batch_size=100,
+                 polyak=0.995,
+                 alpha=0.2,
+                 beta=1,
                  lr_decay_rate=0.95,
-                 tau=1.0, 
-                 q_difference_queue_length=5000, 
-                 deception_type='entropy', 
-                 experiment_name='discrete-agac-agent', 
+                 tau=1.0,
+                 q_difference_queue_length=5000,
+                 deceptiveness_measure='entropy',
+                 experiment_name='discrete-agac-agent',
                  agent_name='rg') -> None:
-        super().__init__(state_space=state_space, 
-                         action_space=action_space, 
-                         all_models=all_models, 
-                         all_model_names=all_model_names, 
-                         hidden_dimension=hidden_dimension, 
+        super().__init__(state_space=state_space,
+                         action_space=action_space,
+                         all_models=all_models,
+                         all_model_names=all_model_names,
+                         hidden_dimension=hidden_dimension,
                          num_hidden_layers=num_hidden_layers,
-                         discount_rate=discount_rate, 
-                         pi_lr=pi_lr, 
-                         critic_lr=critic_lr, 
-                         update_every=update_every, 
-                         update_after=update_after, 
-                         max_ep_len=max_ep_len, 
-                         seed=seed, 
+                         discount_rate=discount_rate,
+                         pi_lr=pi_lr,
+                         critic_lr=critic_lr,
+                         update_every=update_every,
+                         update_after=update_after,
+                         max_ep_len=max_ep_len,
+                         seed=seed,
                          steps_per_epoch=steps_per_epoch,
-                         start_steps=start_steps, 
-                         num_test_episodes=num_test_episodes, 
-                         num_epochs=num_epochs, 
-                         replay_size=replay_size, 
-                         save_freq=save_freq, 
-                         batch_size=batch_size, 
-                         polyak=polyak, 
+                         start_steps=start_steps,
+                         num_test_episodes=num_test_episodes,
+                         num_epochs=num_epochs,
+                         replay_size=replay_size,
+                         save_freq=save_freq,
+                         batch_size=batch_size,
+                         polyak=polyak,
                          alpha=alpha,
-                         beta=beta, 
-                         lr_decay_rate=lr_decay_rate, 
+                         beta=beta,
+                         lr_decay_rate=lr_decay_rate,
                          tau=tau,
                          q_difference_queue_length=q_difference_queue_length,
-                         deception_type=deception_type, 
-                         experiment_name=experiment_name, 
+                         deceptiveness_measure=deceptiveness_measure,
+                         experiment_name=experiment_name,
                          agent_name=agent_name)
 
         self.adversary = OnlineSacAdversary(state_space=state_space,
