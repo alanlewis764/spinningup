@@ -63,6 +63,12 @@ class DiscreteMLPQFunction(nn.Module):
         super().__init__()
         self.q = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight)
+                # m.bias.data.fill_(-100)
+        # self.q.apply(init_weights)
+
     def forward(self, obs):
         if not torch.is_tensor(obs):
             obs = torch.as_tensor(obs, dtype=torch.float32)
