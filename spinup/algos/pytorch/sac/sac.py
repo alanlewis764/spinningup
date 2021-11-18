@@ -7,7 +7,7 @@ import gym
 import time
 import spinup.algos.pytorch.sac.core as core
 from spinup.utils.logx import EpochLogger
-from python.runners.env_reader import read_map
+# from python.runners.env_reader import read_map
 
 
 class ReplayBuffer:

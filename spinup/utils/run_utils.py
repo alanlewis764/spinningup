@@ -1,8 +1,8 @@
-from spinup.user_config import DEFAULT_DATA_DIR, FORCE_DATESTAMP, \
+from spinningup.spinup.user_config import DEFAULT_DATA_DIR, FORCE_DATESTAMP, \
                                DEFAULT_SHORTHAND, WAIT_BEFORE_LAUNCH
-from spinup.utils.logx import colorize
-from spinup.utils.mpi_tools import mpi_fork, msg
-from spinup.utils.serialization_utils import convert_json
+from spinningup.spinup.utils.logx import colorize
+from spinningup.spinup.utils.mpi_tools import mpi_fork, msg
+from spinningup.spinup.utils.serialization_utils import convert_json
 import base64
 from copy import deepcopy
 import cloudpickle

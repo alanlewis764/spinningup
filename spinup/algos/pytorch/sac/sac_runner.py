@@ -50,11 +50,11 @@ def run_simple(agent_key='rg'):
     agent.train(train_env, test_env=test_env)
 
 
-def train_subagent(map_num, agent_name, discrete=True):
+def train_subagent(map_num, agent_name, discrete=True, dilate=False):
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=100**2, dilate=True)
+                                   discrete=discrete, max_episode_steps=100**2, dilate=dilate)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=100**2, dilate=True)
+                                  discrete=discrete, max_episode_steps=100**2, dilate=dilate)
     experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
     agent = SacFactory.create(state_space=train_env.observation_space,
                               action_space=train_env.action_space,

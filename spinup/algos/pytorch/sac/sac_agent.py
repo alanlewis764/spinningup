@@ -13,22 +13,12 @@ import numpy as np
 import torch.nn.functional as F
 
 # gym stuff
-import gym
-import gym_minigrid
-from spinup.utils.minigrid_utils import make_simple_env
-from python.display_utils import VideoViewer
 
 # local stuff
-import spinup.algos.pytorch.sac.core as core
-from spinup.utils.logx import EpochLogger
-from spinup.utils.run_utils import setup_logger_kwargs
-from spinup.utils.buffers import RandomisedSacBuffer
-import python.path_manager as path_manager
-from python.runners.env_reader import read_map
-
-sacPathManager = path_manager.Sac()
-
-SEED = path_manager.Random.SEED
+import spinningup.spinup.algos.pytorch.sac.core as core
+from spinningup.spinup.utils.logx import EpochLogger
+from spinningup.spinup.utils.run_utils import setup_logger_kwargs
+from spinningup.spinup.utils.buffers import RandomisedSacBuffer
 
 
 class SacBaseAgent(ABC):
@@ -116,9 +106,6 @@ class SacBaseAgent(ABC):
         self.q_optimiser = None
         self.q_lr_schedule = None
         self.pi_lr_schedule = None
-
-        # video viewer to look at agent performance
-        self.video_viewer = VideoViewer()
 
     def update(self, data, time_step):
         # run a gradient descent step for q functions
@@ -239,10 +226,7 @@ class SacBaseAgent(ABC):
         self.logger.dump_tabular()
 
     def test(self, env, env_key):
-        if env is None and env_key is not None:
-            env = make_simple_env(env_key, SEED, random_start=False)  # test the agent with the actual start position
-        else:
-            env = deepcopy(env)
+        env = deepcopy(env)
         for j in range(self.num_test_episodes):
             state = env.reset()
             self.test_state_visitation_dict[str(tuple(map(int, state)))] += 1

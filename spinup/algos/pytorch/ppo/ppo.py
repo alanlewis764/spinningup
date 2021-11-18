@@ -4,7 +4,6 @@ from torch.optim import Adam
 import gym
 import time
 import spinup.algos.pytorch.ppo.core as core
-from python.runners.env_reader import read_map
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_pytorch import setup_pytorch_for_mpi, sync_params, mpi_avg_grads
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs

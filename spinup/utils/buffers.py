@@ -1,8 +1,8 @@
 import torch
 import numpy as np
-import spinup.algos.pytorch.ppo_value_function.core as core
-from spinup.utils.mpi_tools import mpi_statistics_scalar
-from spinup.utils.segment_tree import SumSegmentTree, MinSegmentTree
+import spinningup.spinup.algos.pytorch.ppo_value_function.core as core
+from spinningup.spinup.utils.mpi_tools import mpi_statistics_scalar
+from spinningup.spinup.utils.segment_tree import SumSegmentTree, MinSegmentTree
 
 
 class RandomisedSacBuffer:
