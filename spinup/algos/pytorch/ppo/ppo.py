@@ -4,6 +4,7 @@ from torch.optim import Adam
 import gym
 import time
 import spinup.algos.pytorch.ppo.core as core
+from python.runners.env_reader import read_map
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_pytorch import setup_pytorch_for_mpi, sync_params, mpi_avg_grads
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -300,6 +301,7 @@ def ppo(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a, v, logp = ac.step(torch.as_tensor(o, dtype=torch.float32))
 
             next_o, r, d, _ = env.step(a)
+            r = r['rg']
             ep_ret += r
             ep_len += 1
 
@@ -353,20 +355,10 @@ def ppo(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         logger.log_tabular('Time', time.time()-start_time)
         logger.dump_tabular()
 
-MINI_GRID_16 = 'MiniGrid-Deceptive-16x16-v0'
-MINI_GRID_49 = 'MiniGrid-Deceptive-49x49-v0'
-SEED = 1234
-from gym_minigrid.wrappers import SimpleObsWrapper
-
-def make_simple_env(env_key, seed):
-    env = SimpleObsWrapper(gym.make(env_key))
-    env.seed(seed)
-    return env
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default=MINI_GRID_16)
+    parser.add_argument('--env', type=str, default='')
     parser.add_argument('--hid', type=int, default=64)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -382,7 +374,8 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    ppo(lambda : make_simple_env(args.env, SEED), actor_critic=core.MLPActorCritic,
+    env, map_name = read_map(33, terminate_at_any_goal=False)
+    ppo(lambda : env, actor_critic=core.MLPActorCritic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, 
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
