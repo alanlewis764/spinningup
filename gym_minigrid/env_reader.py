@@ -1,8 +1,8 @@
 from gym_minigrid.envs.deceptive import DeceptiveEnv
 from gym_minigrid.wrappers import SimpleObsWrapper
 
-FILE_PATH = '/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/maps/drl/drl.GR'
-MAPS_ROOT = '/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/maps/drl'
+FILE_PATH = 'gym_minigrid/maps/drl/drl.GR'
+MAPS_ROOT = 'gym_minigrid/maps/drl'
 
 
 def read_map(number, random_start=True, terminate_at_any_goal=True, goal_name='rg', discrete=True,
