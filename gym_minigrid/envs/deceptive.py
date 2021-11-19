@@ -1,4 +1,4 @@
-from spinningup.gym_minigrid.minigrid import *
+from gym_minigrid.minigrid import *
 
 ACTION_TO_PATH_COST = {
     0: 1,

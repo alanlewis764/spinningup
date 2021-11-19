@@ -15,10 +15,10 @@ import torch.nn.functional as F
 # gym stuff
 
 # local stuff
-import spinningup.spinup.algos.pytorch.sac.core as core
-from spinningup.spinup.utils.logx import EpochLogger
-from spinningup.spinup.utils.run_utils import setup_logger_kwargs
-from spinningup.spinup.utils.buffers import RandomisedSacBuffer
+import spinup.algos.pytorch.sac.core as core
+from spinup.utils.logx import EpochLogger
+from spinup.utils.run_utils import setup_logger_kwargs
+from spinup.utils.buffers import RandomisedSacBuffer
 
 
 class SacBaseAgent(ABC):

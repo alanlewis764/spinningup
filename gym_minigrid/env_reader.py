@@ -1,5 +1,5 @@
-from spinningup.gym_minigrid.envs.deceptive import DeceptiveEnv
-from spinningup.gym_minigrid.wrappers import SimpleObsWrapper
+from gym_minigrid.envs.deceptive import DeceptiveEnv
+from gym_minigrid.wrappers import SimpleObsWrapper
 
 FILE_PATH = '/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/maps/drl/drl.GR'
 MAPS_ROOT = '/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/maps/drl'

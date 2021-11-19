@@ -1,1 +1,1 @@
-from spinningup.gym_minigrid.envs.deceptive import *
+from gym_minigrid.envs.deceptive import *

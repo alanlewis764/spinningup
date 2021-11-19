@@ -2,8 +2,8 @@ import multiprocessing as mp
 
 import numpy as np
 import torch
-from spinningup.gym_minigrid.env_reader import read_map
-from spinningup.spinup.algos.pytorch.sac.ambiguity import OnlineACAmbiguityAgent
+from gym_minigrid.env_reader import read_map
+from spinup.algos.pytorch.sac.ambiguity import OnlineACAmbiguityAgent
 
 SEED = 42
 np.random.seed(SEED)

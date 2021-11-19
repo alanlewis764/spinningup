@@ -15,8 +15,8 @@ import numpy as np
 from scipy.stats import entropy
 import torch
 
-from spinningup.spinup.algos.pytorch.sac.candidate import CandidateBase, QLearningCandidate, Observation, PretrainedACCandidate, OnlineCandidate
-from spinningup.gym_minigrid.wrappers import *
+from spinup.algos.pytorch.sac.candidate import CandidateBase, QLearningCandidate, Observation, PretrainedACCandidate, OnlineCandidate
+from gym_minigrid.wrappers import *
 
 SEED = 42
 np.random.seed(SEED)

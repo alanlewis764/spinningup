@@ -5,7 +5,7 @@ from collections import deque
 import numpy as np
 import torch
 
-from spinningup.spinup.algos.pytorch.sac.sac_agent import DiscreteSacAgent, ContinuousSacAgent, SacFactory
+from spinup.algos.pytorch.sac.sac_agent import DiscreteSacAgent, ContinuousSacAgent, SacFactory
 
 
 # --------------------------------------------- OBSERVATION CLASSES ---------------------------------------------------
