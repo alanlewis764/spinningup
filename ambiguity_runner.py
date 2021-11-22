@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import argparse
 
 import numpy as np
 import torch
@@ -81,5 +82,15 @@ def train_online_ambiguity_vs_pruning_constant(map_num):
 
 
 if __name__ == "__main__":
-    # train_online_ambiguity_vs_pruning_decay(map_num=9)
-    train_online_ambiguity_vs_pruning_constant(map_num=4)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--hyperparam', type=str, default='pruning_constant')
+    parser.add_argument('--map_num', type=int, default=1)
+    args = parser.parse_args()
+
+    map_num = args.map_num
+    if args.hyperparam == 'pruning_constant':
+        train_online_ambiguity_vs_pruning_constant(map_num=map_num)
+    elif args.hyperparam == 'pruning_decay':
+        train_online_ambiguity_vs_pruning_decay(map_num=map_num)
+    else:
+        raise ValueError("Invalid hyperparam type")
