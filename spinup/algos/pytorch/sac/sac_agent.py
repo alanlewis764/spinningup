@@ -623,7 +623,7 @@ class SacFactory:
                                       hidden_dimension=hidden_dim,
                                       batch_size=batch_size,
                                       start_steps=40000,
-                                      max_ep_len=49 ** 2,
+                                      max_ep_len=max_ep_len,
                                       steps_per_epoch=10000,
                                       seed=42,
                                       alpha=0.2,

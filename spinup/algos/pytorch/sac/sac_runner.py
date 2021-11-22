@@ -70,7 +70,7 @@ def train_subagent(map_num, agent_name, discrete=True):
                               num_epochs=100,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
-                              batch_size=256,
+                              batch_size=100,
                               hidden_dim=64)
     agent.train(train_env=train_env, test_env=test_env)
 
@@ -117,10 +117,10 @@ def run_honest_agent(map_num, discrete=True):
     max_steps = 2000
 
     while not done and num_steps < max_steps:
-        # env.render()
+        env.render()
         state_visitation_dict[str(state)] += 1
         state = torch.as_tensor(state, dtype=torch.float32)
-        action = int(agent.act(state, deterministic=True))
+        action = agent.act(state, deterministic=True)
         path_cost += 1
 
         if intention_recognition is not None:
@@ -143,6 +143,5 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=33, agent_name='rg', discrete=True)
-    # run_honest_agent(map_num=33, discrete=True)
-
+    # train_subagent(map_num=25, agent_name='rg', discrete=False)
+    run_honest_agent(map_num=25, discrete=False)
