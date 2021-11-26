@@ -288,8 +288,6 @@ class SacBaseAgent(ABC):
 
             # end of trajectory
             if done or self.episode_length == self.max_ep_len:
-                print("episode steps = ", self.episode_length)
-                print("episode rewards =", ep_reward)
                 ep_reward = 0
                 self.end_trajectory()
                 self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
@@ -626,5 +624,5 @@ class SacFactory:
                                       max_ep_len=max_ep_len,
                                       steps_per_epoch=10000,
                                       seed=42,
-                                      alpha=0.2,
+                                      alpha=0.5,
                                       polyak=0.995)

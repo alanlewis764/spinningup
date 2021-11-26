@@ -12,6 +12,7 @@ from python.intention_recognition import IntentionRecognitionFactory
 from vis_tools import append_results_to_json, convert_to_time_density
 from display_utils import VideoViewer
 
+
 sacPathManager = path_manager.Sac()
 valueIterationPathManager = path_manager.ValueIteration()
 
@@ -143,5 +144,5 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    # train_subagent(map_num=25, agent_name='rg', discrete=False)
-    run_honest_agent(map_num=25, discrete=False)
+    train_subagent(map_num=25, agent_name='rg', discrete=False)
+    # run_honest_agent(map_num=25, discrete=False)

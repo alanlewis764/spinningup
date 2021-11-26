@@ -1,3 +1,5 @@
+import math
+from typing import List, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -24,6 +26,39 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     return model
 
 
+class cnn(nn.Module):
+    def __init__(
+            self,
+            input_dim: Union[List[int], Tuple[int]],
+            layers_num_channels: List[int],
+            stride: int = 2,
+            kernel_size: int = 3,
+    ):
+        nn.Module.__init__(self)
+        # Same padding
+        print("input dim: ", input_dim)
+        input_h, input_w = input_dim
+        input_num_channels = 1
+        padding = math.ceil((input_h * (stride - 1) + kernel_size - stride) / 2)
+        layers_num_channels = [input_num_channels] + layers_num_channels
+        num_channels = zip(layers_num_channels[:-1], layers_num_channels[1:])
+        layers = []
+        self._layers_without_activations = []
+        for in_channels, out_channels in num_channels:
+            layer = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+            self._layers_without_activations.append(layer)
+            layers.append(layer)
+            layers.append(nn.ELU())
+        self._cnn = nn.Sequential(*layers)
+
+    @property
+    def layers(self):
+        return self._layers_without_activations
+
+    def forward(self, x):
+        return self._cnn(x)
+
+
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
@@ -38,6 +73,34 @@ class CategoricalActor(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+
+    def forward(self, obs, deterministic=False, with_logprob=True):
+        action_logits = self.logits_net(obs)
+        action_probs = F.softmax(action_logits, dim=-1)
+        action_dist = Categorical(probs=action_probs)
+        actions = action_dist.sample().view(-1, 1)
+
+        # avoid numerical instability
+        z = (action_probs == 0).float() * 1e-8
+        log_action_probs = torch.log(action_probs + z)
+
+        return actions, action_probs, log_action_probs
+
+    def act(self, obs):
+        action_logits = self.logits_net(obs)
+        greed_actions = torch.argmax(action_logits, dim=1, keepdim=True)
+        return greed_actions
+
+
+class CategoricalCNNActor(nn.Module):
+
+    def __init__(self, observation_dim: Tuple[int], layers_num_channels: List[int], act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.cnn = cnn(observation_dim, layers_num_channels, stride=2, kernel_size=3)
+        self.flattened_dim = (observation_dim[0] * observation_dim[1] * layers_num_channels[-1])
+        print("layers: ", [self.flattened_dim] + hidden_sizes + [act_dim])
+        self.mlp = mlp([self.flattened_dim] + hidden_sizes + [act_dim], activation=activation)
+        self.logits_net = nn.Sequential(self.cnn, nn.Flatten(), self.mlp)
 
     def forward(self, obs, deterministic=False, with_logprob=True):
         action_logits = self.logits_net(obs)
@@ -76,6 +139,23 @@ class DiscreteMLPQFunction(nn.Module):
         return q_vals
 
 
+class DiscreteCNNQFunction(nn.Module):
+    def __init__(self, observation_dim: Tuple[int], layers_num_channels: List[int], act_dim, hidden_sizes, activation):
+        super().__init__()
+        flattened_dim = (observation_dim[0] * observation_dim[1] * layers_num_channels[-1])
+        print("hidden sizes: ", hidden_sizes)
+        print("CNNQ layers: ", [flattened_dim] + hidden_sizes + [act_dim])
+        self.q_mlp = mlp([flattened_dim] + hidden_sizes + [act_dim], activation)
+        self.q_cnn = cnn(observation_dim, layers_num_channels, stride=2, kernel_size=3)
+        self.q = nn.Sequential(self.q_cnn, nn.Flatten(), self.q_mlp)
+
+    def forward(self, obs):
+        if not torch.is_tensor(obs):
+            obs = torch.as_tensor(obs, dtype=torch.float32)
+        q_vals = self.q(obs)
+        return q_vals
+
+
 class DiscreteMLPValueFunction(nn.Module):
     def __init__(self, obs_dim, hidden_sizes, activation):
         super().__init__()
@@ -87,17 +167,25 @@ class DiscreteMLPValueFunction(nn.Module):
 
 class DiscreteMLPActorCritic(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256),
-                 activation=nn.ReLU):
+    def __init__(self, observation_space, action_space, layers_num_channels=None, hidden_sizes=(256, 256),
+                 activation=nn.ReLU, cnn=False):
         super().__init__()
 
-        obs_dim = observation_space.shape[0]
+        if cnn:
+            obs_dim = observation_space.shape
+        else:
+            obs_dim = observation_space.shape[0]
         act_dim = action_space.n
 
         # build policy and value functions
-        self.pi = CategoricalActor(obs_dim, act_dim, hidden_sizes, activation)
-        self.q1 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
-        self.q2 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        if cnn:
+            self.pi = CategoricalCNNActor(obs_dim, layers_num_channels, act_dim, hidden_sizes, activation)
+            self.q1 = DiscreteCNNQFunction(obs_dim, layers_num_channels, act_dim, hidden_sizes, activation)
+            self.q2 = DiscreteCNNQFunction(obs_dim, layers_num_channels, act_dim, hidden_sizes, activation)
+        else:
+            self.pi = CategoricalActor(obs_dim, act_dim, hidden_sizes, activation)
+            self.q1 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+            self.q2 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         # self.v = DiscreteMLPValueFunction(obs_dim, hidden_sizes, activation)
 
     def act(self, obs, deterministic=False):
