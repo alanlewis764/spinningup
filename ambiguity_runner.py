@@ -16,7 +16,10 @@ def run_online_ac_ambiguity(num_env, policy_type='softmax', discrete=True, adapt
     the_train_env, map_name = read_map(num_env, random_start=False, discrete=discrete)
     the_test_env, map_name = read_map(num_env, random_start=False, discrete=discrete)
 
-    experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-constant={adaptive_pruning_constant}'
+    if hyper_param_study == 'pruning_constant':
+        experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-constant={adaptive_pruning_constant}'
+    else:
+        experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-decay={pruning_decay}'
 
     if num_env in {1, 2, 3, 4, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36}:
         all_models = [None, None, None]
@@ -66,7 +69,7 @@ def train_online_ambiguity_vs_pruning_decay(map_num):
     decay_params = [1, 0.975, 0.95, 0.9, 0.75, 0.5]
     pool = mp.Pool(len(decay_params))
     pool.starmap(run_online_ac_ambiguity,
-                 [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, 'pruning_decay') for decay_param
+                y[(map_num, policy, discrete, adaptive_pruning_constant, decay_param, 'pruning_decay') for decay_param
                   in decay_params])
 
 
