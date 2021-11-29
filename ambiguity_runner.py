@@ -69,7 +69,7 @@ def train_online_ambiguity_vs_pruning_decay(map_num):
     decay_params = [1, 0.975, 0.95, 0.9, 0.75, 0.5]
     pool = mp.Pool(len(decay_params))
     pool.starmap(run_online_ac_ambiguity,
-                y[(map_num, policy, discrete, adaptive_pruning_constant, decay_param, 'pruning_decay') for decay_param
+                 [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, 'pruning_decay') for decay_param
                   in decay_params])
 
 
