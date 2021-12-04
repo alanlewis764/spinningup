@@ -1,15 +1,16 @@
 import multiprocessing as mp
 import torch
+import numpy as np
 from copy import deepcopy
 from collections import defaultdict
 from gym_minigrid.envs.deceptive import DeceptiveEnv
 from python.minigrid_env_utils import SimpleObsWrapper
-from python.runners.env_reader import read_map, read_grid_size, read_goals, read_start
+from python.runners.env_reader import read_map, read_grid_size, read_goals, read_start, read_name
 from spinningup.spinup.algos.pytorch.sac.sac_agent import DiscreteSacAgent, ContinuousSacAgent, SacFactory
 from python.path_manager import get_all_model_names
 import python.path_manager as path_manager
 from python.intention_recognition import IntentionRecognitionFactory
-from vis_tools import append_results_to_json, convert_to_time_density
+from python.data_parsing import append_results_to_json, convert_to_time_density
 from display_utils import VideoViewer
 
 
@@ -52,27 +53,31 @@ def run_simple(agent_key='rg'):
 
 
 def train_subagent(map_num, agent_name, discrete=True):
+    size = read_grid_size(number=map_num)[0]
+    size = 75
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=100**2, dilate=True)
+                                   discrete=discrete, max_episode_steps=size**2, dilate=False)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=100**2, dilate=True)
-    experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
+                                  discrete=discrete, max_episode_steps=size**2, dilate=False)
+    experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}-quicker'
+    # experiment_name = 'test'
     agent = SacFactory.create(state_space=train_env.observation_space,
                               action_space=train_env.action_space,
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.3,
+                              alpha=0.05,
                               learning_decay=0.99,
                               discount_rate=0.975,
-                              max_ep_len=100**2,
-                              steps_per_epoch=(100**2)*2,
-                              start_steps=80000,
-                              num_epochs=100,
+                              max_ep_len=size**2,
+                              steps_per_epoch=(size**2)*4,
+                              start_steps=40000,
+                              num_epochs=200,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
                               batch_size=100,
-                              hidden_dim=64)
+                              hidden_dim=64,
+                              num_test_eps=1)
     agent.train(train_env=train_env, test_env=test_env)
 
 
@@ -145,4 +150,5 @@ if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
     train_subagent(map_num=25, agent_name='rg', discrete=False)
+    # train_subagent(map_num=33, agent_name='rg', discrete=True)
     # run_honest_agent(map_num=25, discrete=False)

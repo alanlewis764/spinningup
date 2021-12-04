@@ -267,7 +267,6 @@ class SacBaseAgent(ABC):
         start_time = time.time()
         state = train_env.reset()
         self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
-        ep_reward = 0
 
         # collect experiences and update every epoch
         for t in range(total_steps):
@@ -281,14 +280,12 @@ class SacBaseAgent(ABC):
                 action = train_env.action_space.sample()
 
             next_state, reward, done, _ = train_env.step(action)
-            ep_reward += reward['rg']
             # done = False if self.episode_length == self.max_ep_len else done
             self.add_experience(state, action, reward, next_state, done)
             state = next_state
 
             # end of trajectory
             if done or self.episode_length == self.max_ep_len:
-                ep_reward = 0
                 self.end_trajectory()
                 self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
                 state = train_env.reset()
@@ -404,8 +401,8 @@ class ContinuousSacAgent(SacBaseAgent):
         # make optimisers for the actor and the critic
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
-        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=0.95)
-        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=0.95)
+        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=1)
+        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=1)
 
         # set up model saving
         self.logger.setup_pytorch_saver(self.actor_critic)
@@ -587,7 +584,7 @@ class SacFactory:
     @staticmethod
     def create(state_space, action_space, subagent_name, experiment_name, discount_rate, discrete=True, num_epochs=100,
                pi_lr=1e-3, critic_lr=1e-3, hidden_dim=64, batch_size=100, max_ep_len=49**2, learning_decay=0.95,
-               alpha=0.2, start_steps=40000, steps_per_epoch=10000):
+               alpha=0.2, start_steps=40000, steps_per_epoch=10000, num_test_eps=1):
         if discrete:
             return DiscreteSacAgent(state_space=state_space,
                                     action_space=action_space,
@@ -604,9 +601,9 @@ class SacFactory:
                                     alpha=alpha,
                                     steps_per_epoch=steps_per_epoch,
                                     start_steps=start_steps,
+                                    policy_update_delay=num_test_eps,
                                     save_freq=1,
                                     num_test_episodes=1,
-                                    policy_update_delay=1,
                                     seed=42,
                                     polyak=0.995)
         else:
@@ -620,9 +617,10 @@ class SacFactory:
                                       discount_rate=discount_rate,
                                       hidden_dimension=hidden_dim,
                                       batch_size=batch_size,
-                                      start_steps=40000,
+                                      alpha=alpha,
                                       max_ep_len=max_ep_len,
-                                      steps_per_epoch=10000,
+                                      steps_per_epoch=steps_per_epoch,
+                                      num_test_episodes=num_test_eps,
+                                      start_steps=40000,
                                       seed=42,
-                                      alpha=0.5,
                                       polyak=0.995)
