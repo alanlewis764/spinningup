@@ -20,6 +20,8 @@ def run_online_ac_ambiguity(num_env, policy_type='softmax', discrete=True, adapt
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-constant={adaptive_pruning_constant}'
     elif hyper_param_study == 'tau_constant':
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-tau-constant={tau_constant}'
+    elif hyper_param_study == 'tau_decay':
+        experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-tau-decay={tau_decay}'
     else:
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-decay={pruning_decay}'
 
@@ -104,6 +106,18 @@ def train_online_ambiguity_vs_tau_constant(map_num):
                    'tau_constant') for tau_constant in tau_constants])
 
 
+def train_online_ambiguity_vs_tau_decay(map_num):
+    policy = 'softmax'
+    discrete = True
+    tau_constant = 1.0
+    tau_decays = [1, 0.99, 0.975, 0.95, 0.9, 0.5]
+    decay_param = 0.90
+    adaptive_pruning_constant = -10
+    pool = mp.Pool(len(tau_decays))
+    pool.starmap(run_online_ac_ambiguity,
+                 [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, tau_constant, tau_decay,
+                   'tau_decay') for tau_decay in tau_decays])
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--hyperparam', type=str, default='pruning_constant')
@@ -117,5 +131,7 @@ if __name__ == "__main__":
         train_online_ambiguity_vs_pruning_decay(map_num=map_num)
     elif args.hyperparam == 'tau_constant':
         train_online_ambiguity_vs_tau_constant(map_num=map_num)
+    elif args.hyperparam == 'tau_decay':
+        train_online_ambiguity_vs_tau_decay(map_num=map_num)
     else:
         raise ValueError("Invalid hyperparam type")
