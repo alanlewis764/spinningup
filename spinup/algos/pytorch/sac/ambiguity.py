@@ -239,7 +239,7 @@ class OnlineACAmbiguityAgent(ACAmbiguityAgent):
                  max_ep_len=49 ** 2, steps_per_epoch=16000, pi_lr=1e-3, critic_lr=1e-3, tau=1, tau_decay=0.95,
                  policy='softmax', experiment_name='online-ac-ambiguity-agent', adaptive_pruning_constant=-20,
                  pruning_decay=0.975, discount_rate=0.975, discrete=True, lr_decay=0.95, alpha=0.2,
-                 batch_size=128, hidden_dim=64) -> None:
+                 batch_size=128, hidden_dim=64, num_test_eps=1) -> None:
         AmbiguityBase.__init__(
             self, state_space=state_space, action_space=action_space, name=name, all_models=all_models,
             real_goal_pruning_constant=real_goal_pruning_constant, q_gain_pruning_constant=q_gain_pruning_constant,
@@ -259,7 +259,8 @@ class OnlineACAmbiguityAgent(ACAmbiguityAgent):
                             lr_decay=lr_decay,
                             alpha=alpha,
                             batch_size=batch_size,
-                            hidden_dim=hidden_dim)
+                            hidden_dim=hidden_dim,
+                            num_test_eps=num_test_eps)
             for model_path, name in zip(all_models, all_model_names)
         ], dtype=OnlineCandidate)
         self.real_pretrained_subagent = self.candidates[0].subagent

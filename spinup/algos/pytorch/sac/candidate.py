@@ -200,7 +200,8 @@ class OnlineCandidate(CandidateBase):
                  lr_decay=0.95,
                  alpha=0.2,
                  batch_size=128,
-                 hidden_dim=64) -> None:
+                 hidden_dim=64,
+                 num_test_eps=1) -> None:
         if subagent_path:
             subagent = torch.load(subagent_path)
         else:
@@ -216,7 +217,8 @@ class OnlineCandidate(CandidateBase):
                                          discount_rate=discount_rate,
                                          alpha=alpha,
                                          batch_size=batch_size,
-                                         hidden_dim=hidden_dim)
+                                         hidden_dim=hidden_dim,
+                                         num_test_eps=num_test_eps)
 
         super().__init__(subagent=subagent,
                          probability=probability,
