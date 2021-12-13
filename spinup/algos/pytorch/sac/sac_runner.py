@@ -54,19 +54,19 @@ def run_simple(agent_key='rg'):
 
 def train_subagent(map_num, agent_name, discrete=True):
     size = read_grid_size(number=map_num)[0]
-    size = 75
+    # size = 75
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
                                    discrete=discrete, max_episode_steps=size**2, dilate=False)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
                                   discrete=discrete, max_episode_steps=size**2, dilate=False)
-    experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}-quicker'
+    experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
     # experiment_name = 'test'
     agent = SacFactory.create(state_space=train_env.observation_space,
                               action_space=train_env.action_space,
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.05,
+                              alpha=0.001,
                               learning_decay=0.99,
                               discount_rate=0.975,
                               max_ep_len=size**2,
@@ -149,6 +149,6 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=25, agent_name='rg', discrete=False)
+    train_subagent(map_num=18, agent_name='rg', discrete=False)
     # train_subagent(map_num=33, agent_name='rg', discrete=True)
     # run_honest_agent(map_num=25, discrete=False)

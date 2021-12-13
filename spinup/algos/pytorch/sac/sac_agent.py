@@ -296,13 +296,15 @@ class SacBaseAgent(ABC):
             # handle the end of each epoch
             self.handle_end_of_epoch(time_step=t, test_env=test_env, test_env_key=test_env_key)
 
-    def interval_train(self, train_env, test_env=None, test_env_key=None, num_steps=100000):
+    def interval_train(self, train_env, test_env=None, test_env_key=None, num_steps=100000, render=False):
         start_time = time.time()
         state = train_env.reset()
         self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
 
         # collect experiences and update every epoch
         for _ in range(num_steps):
+            if render:
+                train_env.render()
 
             # at the start, randomly sample actions from a uniform distribution for better exploration
             # only afterwards use the learned policy...
