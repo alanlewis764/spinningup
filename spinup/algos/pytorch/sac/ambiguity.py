@@ -232,6 +232,7 @@ class ACAmbiguityAgent(AmbiguityBase):
         current_value = self.current_state_value_estimate
         return action_value - current_value > self.real_goal_pruning_constant
 
+
 class OnlineACAmbiguityAgent(ACAmbiguityAgent):
 
     def __init__(self, state_space, action_space, name, all_models, all_model_names, env,
@@ -483,7 +484,8 @@ class OnlineACAmbiguityAgent(ACAmbiguityAgent):
                 self.log_agent_stats(time_step, epoch_number)
 
                 # degrade the softmax temperature (tau) and adaptive pruning constant
-                self.tau = self.tau * self.tau_decay
+                if self.policy == 'softmax':
+                    self.tau = self.tau * self.tau_decay
                 self.adaptive_pruning_constant = self.adaptive_pruning_constant * self.pruning_decay
                 if self.policy == 'epoch_round_robin':
                     self.current_candidates_turn = (self.current_candidates_turn + 1) % self.num_subagents
@@ -526,7 +528,8 @@ class OnlineACAmbiguityAgent(ACAmbiguityAgent):
                 self.log_agent_stats(self.total_steps_taken, epoch_number)
 
                 # degrade the softmax temperature (tau)
-                self.tau = self.tau * self.tau_decay
+                if self.policy == 'softmax':
+                    self.tau = self.tau * self.tau_decay
                 self.adaptive_pruning_constant = self.adaptive_pruning_constant * self.pruning_decay
 
             episode_length += 1

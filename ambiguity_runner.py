@@ -22,8 +22,10 @@ def run_online_ac_ambiguity(num_env, policy_type='softmax', discrete=True, adapt
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-tau-constant={tau_constant}'
     elif hyper_param_study == 'tau_decay':
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-tau-decay={tau_decay}'
-    else:
+    elif hyper_param_study == 'pruning_decay':
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-decay={pruning_decay}'
+    else:
+        experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}'
 
     if num_env in {1, 2, 3, 4, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36}:
         all_models = [None, None, None]
@@ -118,20 +120,33 @@ def train_online_ambiguity_vs_tau_decay(map_num):
                  [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, tau_constant, tau_decay,
                    'tau_decay') for tau_decay in tau_decays])
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--hyperparam', type=str, default='pruning_constant')
     parser.add_argument('--map_num', type=int, default=1)
+    parser.add_argument('--policy', type=str, default='softmax')
+    parser.add_argument('--discrete', type=bool, default=True)
     args = parser.parse_args()
 
     map_num = args.map_num
-    if args.hyperparam == 'pruning_constant':
-        train_online_ambiguity_vs_pruning_constant(map_num=map_num)
-    elif args.hyperparam == 'pruning_decay':
-        train_online_ambiguity_vs_pruning_decay(map_num=map_num)
-    elif args.hyperparam == 'tau_constant':
-        train_online_ambiguity_vs_tau_constant(map_num=map_num)
-    elif args.hyperparam == 'tau_decay':
-        train_online_ambiguity_vs_tau_decay(map_num=map_num)
+    discrete = args.discrete
+    policy = args.policy
+    hyperparam = args.hyperparam
+    if policy == 'softmax':
+        if hyperparam == 'pruning_constant':
+            train_online_ambiguity_vs_pruning_constant(map_num=map_num)
+        elif hyperparam == 'pruning_decay':
+            train_online_ambiguity_vs_pruning_decay(map_num=map_num)
+        elif hyperparam == 'tau_constant':
+            train_online_ambiguity_vs_tau_constant(map_num=map_num)
+        elif hyperparam == 'tau_decay':
+            train_online_ambiguity_vs_tau_decay(map_num=map_num)
+        else:
+            raise ValueError("Invalid hyperparam type")
+    elif policy == 'hardmax':
+        run_online_ac_ambiguity(num_env=map_num,
+                                policy_type=policy,
+                                discrete=discrete)
     else:
-        raise ValueError("Invalid hyperparam type")
+        raise ValueError("Invalid policy type")
