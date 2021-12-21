@@ -262,7 +262,7 @@ class SacBaseAgent(ABC):
             self.test_state_visitation_dict[str(tuple(map(int, state)))] += 1
             self.end_trajectory(test=True)
 
-    def train(self, train_env, test_env=None, test_env_key=None):
+    def train(self, train_env, test_env=None, test_env_key=None, render=False):
         total_steps = self.steps_per_epoch * self.num_epochs
         start_time = time.time()
         state = train_env.reset()
@@ -270,7 +270,8 @@ class SacBaseAgent(ABC):
 
         # collect experiences and update every epoch
         for t in range(total_steps):
-            # train_env.render()
+            if render:
+                train_env.render()
 
             # at the start, randomly sample actions from a uniform distribution for better exploration
             # only afterwards use the learned policy...

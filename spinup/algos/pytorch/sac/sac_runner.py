@@ -52,13 +52,12 @@ def run_simple(agent_key='rg'):
     agent.train(train_env, test_env=test_env)
 
 
-def train_subagent(map_num, agent_name, discrete=True):
+def train_subagent(map_num, agent_name, discrete=True, render=False):
     size = read_grid_size(number=map_num)[0]
-    # size = 75
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=size**2, dilate=False)
+                                   discrete=discrete, max_episode_steps=(size**2), dilate=False)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=size**2, dilate=False)
+                                  discrete=discrete, max_episode_steps=(size**2), dilate=False)
     experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
     # experiment_name = 'test'
     agent = SacFactory.create(state_space=train_env.observation_space,
@@ -66,19 +65,19 @@ def train_subagent(map_num, agent_name, discrete=True):
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.001,
+                              alpha=0.1,
                               learning_decay=0.99,
                               discount_rate=0.975,
-                              max_ep_len=size**2,
+                              max_ep_len=(size**2),
                               steps_per_epoch=(size**2)*4,
-                              start_steps=40000,
-                              num_epochs=200,
+                              start_steps=80000,
+                              num_epochs=100,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
                               batch_size=100,
                               hidden_dim=64,
                               num_test_eps=1)
-    agent.train(train_env=train_env, test_env=test_env)
+    agent.train(train_env=train_env, test_env=test_env, render=render)
 
 
 def train_subagents_parallel():
@@ -89,7 +88,7 @@ def train_subagents_parallel():
         pool.starmap(train_subagent, [(map_number, name, discrete) for name in agent_names])
 
 
-def run_honest_agent(map_num, discrete=True):
+def run_honest_agent(map_num, discrete=True, render=False):
     env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name='rg',
                              discrete=discrete)
     video_viewer = VideoViewer()
@@ -113,6 +112,8 @@ def run_honest_agent(map_num, discrete=True):
     #                                                            goals=goals,
     #                                                            map_num=map_num)
 
+    # debug: env.state, env.value_tables['rg'][int(env.state[1])][int(env.state[0])], env.value_tables['rg'][37][42]
+
     intention_recognition = None
 
     state_visitation_dict = defaultdict(int)
@@ -123,7 +124,8 @@ def run_honest_agent(map_num, discrete=True):
     max_steps = 2000
 
     while not done and num_steps < max_steps:
-        env.render()
+        if render:
+            env.render()
         state_visitation_dict[str(state)] += 1
         state = torch.as_tensor(state, dtype=torch.float32)
         action = agent.act(state, deterministic=True)
@@ -149,6 +151,6 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=18, agent_name='rg', discrete=False)
+    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False)
     # train_subagent(map_num=33, agent_name='rg', discrete=True)
-    # run_honest_agent(map_num=25, discrete=False)
+    # run_honest_agent(map_num=23, discrete=False, render=True)
