@@ -1,12 +1,15 @@
 from gym_minigrid.envs.deceptive import DeceptiveEnv
 from gym_minigrid.wrappers import SimpleObsWrapper
+from gym_extensions.continuous.gym_navigation_2d import StateBasedMDPNavigation2DEnv
+import numpy as np
 
 FILE_PATH = 'gym_minigrid/maps/drl/drl.GR'
 MAPS_ROOT = 'gym_minigrid/maps/drl'
 
 
 def read_map(number, random_start=True, terminate_at_any_goal=True, goal_name='rg', discrete=True,
-             max_episode_steps=49 ** 2, dilate=False):
+             max_episode_steps=49 ** 2, dilate=False, max_speed=1, destination_tolerance_range=0.5,
+             reward_type='value_table'):
     with open(FILE_PATH, 'r') as f:
         maps = f.readlines()
         map = maps[number]
@@ -17,27 +20,51 @@ def read_map(number, random_start=True, terminate_at_any_goal=True, goal_name='r
         start_pos = (int(map[3]), int(map[4]))
         real_goal = (int(map[5]), int(map[6]), 'rg')
         fake_goals = [(int(map[7 + 2 * i]), int(map[8 + 2 * i]), f'fg{i + 1}') for i in range(num_goals)]
-    if number == -1:
-        return SimpleObsWrapper(DeceptiveEnv.load_from_file(
-            fp=f'/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/maps/drl/empty.map',
-            optcost=1,
-            start_pos=(47, 47),
-            real_goal=(1, 1, 'rg'),
-            fake_goals=[(47, 1, 'fg1')],
-            random_start=False,
-            terminate_at_any_goal=terminate_at_any_goal,
-            goal_name='rg')), 'simple'
+    all_names = get_all_model_names(map_num=number)
+    value_tables = {name: read_q_table(map_number=number, map_name=map_name, goal_name=name, show=False) for name in
+                    all_names} \
+        if reward_type == 'value_table' \
+        else None
 
-    return SimpleObsWrapper(DeceptiveEnv.load_from_file(fp=f'{MAPS_ROOT}/{map_name}.map',
-                                                        optcost=optcost,
-                                                        start_pos=start_pos,
-                                                        real_goal=real_goal,
-                                                        fake_goals=fake_goals,
-                                                        random_start=random_start,
-                                                        max_episode_steps=max_episode_steps,
-                                                        terminate_at_any_goal=terminate_at_any_goal,
-                                                        goal_name=goal_name,
-                                                        dilate=dilate)), map_name
+    if discrete:
+        return SimpleObsWrapper(DeceptiveEnv.load_from_file(fp=f'{MAPS_ROOT}/{map_name}.map',
+                                                            optcost=optcost,
+                                                            start_pos=start_pos,
+                                                            real_goal=real_goal,
+                                                            fake_goals=fake_goals,
+                                                            random_start=random_start,
+                                                            max_episode_steps=max_episode_steps,
+                                                            terminate_at_any_goal=terminate_at_any_goal,
+                                                            goal_name=goal_name,
+                                                            dilate=dilate)), map_name
+    else:
+        return StateBasedMDPNavigation2DEnv.load_from_file(fp=f'{MAPS_ROOT}/{map_name}.map',
+                                                           optcost=optcost,
+                                                           start_pos=start_pos,
+                                                           goal_bonus=100,
+                                                           real_goal=real_goal,
+                                                           fake_goals=fake_goals,
+                                                           max_episode_steps=max_episode_steps,
+                                                           destination_tolerance_range=destination_tolerance_range,
+                                                           random_start=random_start,
+                                                           terminate_at_any_goal=terminate_at_any_goal,
+                                                           goal_name=goal_name,
+                                                           visibility_graph=None,
+                                                           value_tables=value_tables,
+                                                           max_speed=max_speed,
+                                                           reward_type=reward_type), '2DContinuousNav'
+
+
+def read_q_table(map_number, map_name, goal_name='rg', show=False):
+    q_table = np.load(f'/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/model_storage/value_iteration/{map_name}{map_number}-{goal_name}.npy')
+    # q_table = np.load(f'/data/projects/punim1607/spinningup/value_iteration/{map_name}{map_number}-{goal_name}.npy')
+    grid_size = read_grid_size(number=map_number)[0]
+    value_table = [[0 for _ in range(grid_size + 1)] for _ in range(grid_size + 1)]
+    for y in range(grid_size):
+        for x in range(grid_size):
+            state = (x, y, 0)
+            value_table[y][x] = q_table[state].max()
+    return value_table
 
 
 def read_goals(number, include_start=False, discrete=True):
@@ -129,3 +156,10 @@ def read_blocked_states(number):
             if cell == 'T':
                 blocked_cells.append((x, y))
     return blocked_cells
+
+
+def get_all_model_names(map_num):
+    if map_num in {1, 2, 3, 4, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36}:
+        return ['rg', 'fg1', 'fg2']
+    else:
+        return ['rg', 'fg1', 'fg2', 'fg3', 'fg4']

@@ -69,9 +69,8 @@ def run_online_ac_ambiguity(num_env, policy_type='softmax', discrete=True, adapt
     agent.train(the_train_env)
 
 
-def train_online_ambiguity_vs_pruning_decay(map_num):
+def train_online_ambiguity_vs_pruning_decay(map_num, discrete=True):
     policy = 'softmax'
-    discrete = True
     decay_params = [1, 0.975, 0.95, 0.9, 0.75, 0.5]
     adaptive_pruning_constant = -100
     tau_constant = 1.0
@@ -82,9 +81,8 @@ def train_online_ambiguity_vs_pruning_decay(map_num):
                    'pruning_decay') for decay_param in decay_params])
 
 
-def train_online_ambiguity_vs_pruning_constant(map_num):
+def train_online_ambiguity_vs_pruning_constant(map_num, discrete=True):
     policy = 'softmax'
-    discrete = True
     pruning_constants = [-1, -10, -50, -100, -500, -1000]
     decay_param = 0.95
     tau_constant = 1.0
@@ -95,9 +93,8 @@ def train_online_ambiguity_vs_pruning_constant(map_num):
                    'pruning_constant') for pruning_constant in pruning_constants])
 
 
-def train_online_ambiguity_vs_tau_constant(map_num):
+def train_online_ambiguity_vs_tau_constant(map_num, discrete=True):
     policy = 'softmax'
-    discrete = True
     tau_constants = [0, 0.5, 1.0, 2.0, 5.0, 10.0]
     tau_decay = 0.975
     decay_param = 0.90
@@ -108,9 +105,8 @@ def train_online_ambiguity_vs_tau_constant(map_num):
                    'tau_constant') for tau_constant in tau_constants])
 
 
-def train_online_ambiguity_vs_tau_decay(map_num):
+def train_online_ambiguity_vs_tau_decay(map_num, discrete=True):
     policy = 'softmax'
-    discrete = True
     tau_constant = 1.0
     tau_decays = [1, 0.99, 0.975, 0.95, 0.9, 0.5]
     decay_param = 0.90
@@ -126,7 +122,7 @@ if __name__ == "__main__":
     parser.add_argument('--hyperparam', type=str, default='pruning_constant')
     parser.add_argument('--map_num', type=int, default=1)
     parser.add_argument('--policy', type=str, default='softmax')
-    parser.add_argument('--discrete', type=bool, default=True)
+    parser.add_argument('--discrete', type=bool, default=False)
     args = parser.parse_args()
 
     map_num = args.map_num
@@ -135,13 +131,13 @@ if __name__ == "__main__":
     hyperparam = args.hyperparam
     if policy == 'softmax':
         if hyperparam == 'pruning_constant':
-            train_online_ambiguity_vs_pruning_constant(map_num=map_num)
+            train_online_ambiguity_vs_pruning_constant(map_num=map_num, discrete=discrete)
         elif hyperparam == 'pruning_decay':
-            train_online_ambiguity_vs_pruning_decay(map_num=map_num)
+            train_online_ambiguity_vs_pruning_decay(map_num=map_num, discrete=discrete)
         elif hyperparam == 'tau_constant':
-            train_online_ambiguity_vs_tau_constant(map_num=map_num)
+            train_online_ambiguity_vs_tau_constant(map_num=map_num, discrete=discrete)
         elif hyperparam == 'tau_decay':
-            train_online_ambiguity_vs_tau_decay(map_num=map_num)
+            train_online_ambiguity_vs_tau_decay(map_num=map_num, discrete=discrete)
         else:
             raise ValueError("Invalid hyperparam type")
     elif policy == 'hardmax':
