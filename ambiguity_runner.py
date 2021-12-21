@@ -26,6 +26,8 @@ def run_online_ac_ambiguity(num_env, policy_type='softmax', discrete=True, adapt
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}-pruning-decay={pruning_decay}'
     else:
         experiment_name = f'{map_name}{num_env}-online-ac-{policy_type}'
+    if not discrete:
+        experiment_name += '-continuous'
 
     if num_env in {1, 2, 3, 4, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36}:
         all_models = [None, None, None]
