@@ -1,27 +1,94 @@
 # Agents
-import copy
-import json
 import typing
 from abc import ABC, abstractmethod
-import copy
 from collections import defaultdict
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-import time
-import json
-from scipy.special import softmax
-import numpy as np
-from scipy.stats import entropy
-import torch
+import copy
 
-from spinup.algos.pytorch.sac.candidate import CandidateBase, QLearningCandidate, Observation, PretrainedACCandidate, OnlineCandidate
+import torch
+from scipy.special import softmax
+from scipy.stats import entropy
+
 from gym_minigrid.wrappers import *
+from spinup.algos.pytorch.sac.candidate import CandidateBase, Observation, PretrainedACCandidate, OnlineCandidate
+from spinup.algos.pytorch.sac.intention_recognition import IntentionRecognitionBase
+from gym_minigrid.env_reader import read_name, get_all_model_names
+from spinup.algos.pytorch.sac.ambiguity_types import AmbiguityTypes
 
 SEED = 42
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
+
+def get_sac_path(agent_type, map_name='empty1', agent_name='rg', seed='42', discrete=True, state_visitation=False,
+                 decay_param=None, pruning_constant=None, tau_decay=None, tau_constant=None):
+    root = '/data/projects/punim1607/spinningup/data/'
+    # find correct directory
+    if map_name == 'test':
+        folder = f'{root}test-{agent_name}/test-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.SAC:
+        if discrete:
+            folder = f'{root}pretrained-sac-{map_name}-{agent_name}/pretrained-sac-{map_name}-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-pretrained-sac-{map_name}-{agent_name}/continuous-pretrained-sac-{map_name}-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.ONLINE_SAC:
+        if discrete:
+            folder = f'{root}{map_name}-online-ac-softmax-{agent_name}/{map_name}-online-ac-softmax-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-{map_name}-online-ac-softmax-{agent_name}/continuous-{map_name}-online-ac-softmax-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.INTERVAL_SAC:
+        if discrete:
+            folder = f'{root}interval_{map_name}-{agent_name}/interval_{map_name}-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-interval_{map_name}-{agent_name}/continuous-interval_{map_name}-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.INTERVAL_ONLINE_SAC:
+        if discrete:
+            folder = f'{root}interval_{map_name}-online-ac-softmax-{agent_name}/interval_{map_name}-online-ac-softmax-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-interval_{map_name}-online-ac-softmax-{agent_name}/continuous-interval_{map_name}-online-ac-softmax-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.PRUNING_DECAY:
+        if discrete:
+            folder = f'{root}{map_name}-online-ac-softmax-pruning-decay={decay_param}-{agent_name}/{map_name}-online-ac-softmax-pruning-decay={decay_param}-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-{map_name}-online-ac-softmax-pruning-decay={decay_param}-{agent_name}/continuous-{map_name}-online-ac-softmax-pruning-decay={decay_param}-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.PRUNING_CONSTANT:
+        if discrete:
+            folder = f'{root}{map_name}-online-ac-softmax-pruning-constant={pruning_constant}-{agent_name}/{map_name}-online-ac-softmax-pruning-constant={pruning_constant}-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-{map_name}-online-ac-softmax-pruning-constant={pruning_constant}-{agent_name}/continuous-{map_name}-online-ac-softmax-pruning-constant={pruning_constant}-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.TAU_DECAY:
+        if discrete:
+            folder = f'{root}{map_name}-online-ac-softmax-tau-decay={tau_decay}-{agent_name}/{map_name}-online-ac-softmax-tau-decay={tau_decay}-{agent_name}_s{seed}/'
+        else:
+            folder = f'{root}continuous-{map_name}-online-ac-softmax-tau-decay={tau_decay}-{agent_name}/continuous-{map_name}-online-ac-softmax-tau-decay={tau_decay}-{agent_name}_s{seed}/'
+    elif agent_type == AmbiguityTypes.TAU_CONSTANT:
+        if tau_constant == 0:
+            folder = f'{root}{map_name}-online-ac-hardmax-{agent_name}/{map_name}-online-ac-hardmax-{agent_name}_s{seed}/'
+        else:
+            if discrete:
+                folder = f'{root}{map_name}-online-ac-softmax-tau-constant={tau_constant}-{agent_name}/{map_name}-online-ac-softmax-tau-constant={tau_constant}-{agent_name}_s{seed}/'
+            else:
+                folder = f'{root}continuous-{map_name}-online-ac-softmax-tau-constant={tau_constant}-{agent_name}/continuous-{map_name}-online-ac-softmax-tau-constant={tau_constant}-{agent_name}_s{seed}/'
+    else:
+        raise ValueError(f"{agent_type} is not a valid type")
+
+    if state_visitation:
+        return folder + 'train_state_visitation_dict.json'
+    else:
+        # return model by default
+        return folder + 'pyt_save/model.pt'
+
+
+ACTION_TO_PATH_COST = {
+    0: 1,
+    1: 1,
+    2: 1,
+    3: 1,
+    4: np.sqrt(2),
+    5: np.sqrt(2),
+    6: np.sqrt(2),
+    7: np.sqrt(2),
+    8: 0,
+}
 
 class AmbiguityBase(ABC):
     def __init__(self,
@@ -231,6 +298,54 @@ class ACAmbiguityAgent(AmbiguityBase):
         action_value = self.real_pretrained_subagent.get_value_estimate(state, action)
         current_value = self.current_state_value_estimate
         return action_value - current_value > self.real_goal_pruning_constant
+
+    def single_environment_run(self, env_detail, agent_type='interval_sac', decay_param=None, pruning_constant=None,
+                               tau_decay=None, tau_constant=None, measure='real_goal_probs', discrete=True, intention_recognition: IntentionRecognitionBase = None,
+                               render=False):
+        """
+        This should be a single environment run to be used after training for analysis of the results
+        :return:
+        """
+        env, env_name = env_detail
+        state_visitation_dict = defaultdict(int)
+        state = env.reset()
+        done = False
+        path_cost = 0
+        num_steps = 0
+        max_steps = 1000
+
+        while not done and num_steps < max_steps:
+            if render:
+                env.render()
+            state_visitation_dict[str((state[0], state[1]))] += 1
+            tensor_state = torch.as_tensor(state, dtype=torch.float32)
+            action = self.act(tensor_state)
+            if discrete:
+                path_cost += ACTION_TO_PATH_COST[int(action)]
+            else:
+                path_cost += 1
+
+            if intention_recognition is not None:
+                _ = intention_recognition.predict_goal_probabilities(state, action)
+
+            next_state, reward, done, info = env.step(action)
+            self.update(tensor_state, action, next_state, reward, done)
+            state = next_state
+            num_steps += 1
+        env.close()
+        state_visitation_dict[str((state[0], state[1]))] += 1
+        if intention_recognition is not None:
+            if measure == 'real_goal_probs':
+                score = intention_recognition.candidate_probabilities_dict['rg']
+            elif measure == 'entropy':
+                score = intention_recognition.entropies
+            elif measure == 'ldp':
+                score = intention_recognition.get_ldp()
+            else:
+                raise ValueError("Not a valid intention recognition score")
+            return score, path_cost
+        else:
+            return 'NO SCORE', 'NO_PATH_COST'
 
 
 class OnlineACAmbiguityAgent(ACAmbiguityAgent):
@@ -558,3 +673,69 @@ class OnlineACAmbiguityAgent(ACAmbiguityAgent):
         """
         for candidate in self.candidates:
             candidate.save_state(epoch_number=epoch_number, train_env=my_train_env)
+
+    def single_environment_run(self, env, agent_type='interval_sac', decay_param=None, pruning_constant=None,
+                               tau_decay=None, tau_constant=None,
+                               measure='real_goal_probs', discrete=True,
+                               intention_recognition: IntentionRecognitionBase = None):
+        """
+        This should be a single environment run to be used after training for analysis of the results
+        :return:
+        """
+        # make sure that you end the trajectory and reset the environment before doing this test run, otherwise
+        # information from the previous run will corrupt the behaviour
+        # self.end_trajectory()
+        self.reset()
+        env, env_name = env
+        env = copy.deepcopy(env)
+        state = env.reset()
+        done = False
+        path_cost = 0
+
+        while not done:
+            tensor_state = torch.as_tensor(state, dtype=torch.float32)
+            action = self.act(tensor_state)
+            path_cost += ACTION_TO_PATH_COST[int(action)]
+            if intention_recognition is not None:
+                _ = intention_recognition.predict_goal_probabilities(state, action)
+            next_state, reward, done, info = env.step(action)
+            self.update(state, action, next_state, reward, done, training=False)
+            state = next_state
+
+        if intention_recognition is not None:
+            if measure == 'real_goal_probs':
+                score = intention_recognition.candidate_probabilities_dict['rg']
+            elif measure == 'entropy':
+                score = intention_recognition.entropies
+            else:
+                raise ValueError("Not a valid intention recognition score")
+            return score, path_cost
+        else:
+            return 'NO SCORE', 'NO_PATH_COST'
+
+
+class AmbiguityFactory:
+
+    @staticmethod
+    def create(state_space, action_space, agent_type, env_number, discrete=True, pruning_decay=None,
+               pruning_constant=None, tau_decay=None, tau_constant=None):
+        map_name = read_name(number=env_number, discrete=discrete)
+        agent_names = get_all_model_names(env_number)
+        return ACAmbiguityAgent(
+            state_space=state_space,
+            action_space=action_space,
+            name='AC',
+            all_models=[
+                get_sac_path(agent_type=agent_type, map_name=f'{map_name}{env_number}', agent_name=name,
+                             pruning_constant=pruning_constant, decay_param=pruning_decay,
+                             tau_decay=tau_decay, tau_constant=tau_constant, discrete=discrete)
+                for name in agent_names],
+            rg_model=get_sac_path(agent_type=agent_type, map_name=f'{map_name}{env_number}',
+                                  agent_name='rg', pruning_constant=pruning_constant,
+                                  decay_param=pruning_decay, tau_decay=tau_decay,
+                                  tau_constant=tau_constant, discrete=discrete),
+            all_model_names=agent_names,
+            real_goal_pruning_constant=pruning_constant * (pruning_decay ** 120),
+            q_gain_pruning_constant=pruning_constant * (pruning_decay ** 120),
+            discrete=discrete
+        )

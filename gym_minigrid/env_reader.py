@@ -1,7 +1,10 @@
 from gym_minigrid.envs.deceptive import DeceptiveEnv
 from gym_minigrid.wrappers import SimpleObsWrapper
 from gym_extensions.continuous.gym_navigation_2d import StateBasedMDPNavigation2DEnv
+from collections import deque
+import copy
 import numpy as np
+import pyvisgraph as vg
 
 FILE_PATH = 'gym_minigrid/maps/drl/drl.GR'
 MAPS_ROOT = 'gym_minigrid/maps/drl'
@@ -114,17 +117,10 @@ def read_name(number, discrete=True):
 
 
 def read_grid_size(number):
-    if number == -1:
+    if number < 33:
         return 49, 49
-    with open(FILE_PATH, 'r') as f:
-        maps = f.readlines()
-        map = maps[number]
-        map = map.split(",")
-        map_name = map[0]
-    if map_name == "empty":
-        return 49, 49
-    size = int(map_name.split("_")[0])
-    return size, size
+    else:
+        return 100, 100
 
 
 def read_blocked_states(number):
@@ -156,6 +152,140 @@ def read_blocked_states(number):
             if cell == 'T':
                 blocked_cells.append((x, y))
     return blocked_cells
+
+
+def read_map_as_visibility_graph(number):
+    with open(FILE_PATH, 'r') as f:
+        maps = f.readlines()
+        map = maps[number]
+        map = map.split(",")
+        map_name = map[0]
+    fp = f'{MAPS_ROOT}/{map_name}.map'
+    with open(fp, 'r') as f:
+        _ = f.readline().split(" ")[1]
+        height = int(f.readline().split(" ")[1])
+        width = int(f.readline().split(" ")[1])
+        f.readline()  # read the map heading
+
+        # read the map into an array
+        map_array = []
+        for y in range(height):
+            map_array.append(f.readline())
+
+        parsed_walls = set()
+
+        poly = set()
+        all_polys = []
+        vg_polys = []
+        for y in range(1, height - 1):
+            for x in range(1, width - 2):
+                cell = (x, y)
+                # find all walls
+                if is_wall(x, y, map_array):
+                    unparsed_walls = set()
+                    if cell not in parsed_walls:
+                        unparsed_walls.add(cell)
+                        while len(unparsed_walls) != 0:
+                            parsed_wall = unparsed_walls.pop()
+                            parsed_walls.add(parsed_wall)
+                            poly.add(parsed_wall)
+                            add_neighbour_walls(map_array, parsed_wall, unparsed_walls, parsed_walls, width - 1,
+                                                height - 1)
+
+                        all_polys.append(poly)
+                        poly = set()
+        for s in all_polys:
+            borders = lambda x, y: [frozenset([(x + a, y + b), (x + c, y + d)])
+                                    for (a, b), (c, d), (e, f) in [
+                                        ((0, 0), (0, 1), (0, -1)),
+                                        ((0, 0), (1, 0), (-1, 0)),
+                                        ((1, 0), (1, 1), (0, 1)),
+                                        ((0, 1), (1, 1), (1, 0)),
+                                    ]
+                                    if (x + f, y + e) not in s]
+            edges = sum((borders(*i) for i in s), [])
+
+            ordered_edges, ordered_points = bfs(set(edges))
+            orientation = lambda x: (lambda y: y[0][0] == y[1][0])(list(x))
+            res = []
+            for e1, p, e2 in zip(ordered_edges,
+                                 ordered_points,
+                                 ordered_edges[1:] + ordered_edges[:1]):
+                if orientation(e1) != orientation(e2):
+                    res.append(p)
+            vg_poly = []
+            for x, y in res:
+                vg_poly.append(vg.Point(x, y))
+            vg_polys.append(vg_poly)
+        g = vg.VisGraph()
+        g.build(vg_polys)
+        return g
+
+
+def bfs(s):
+    adjacent = lambda x, y: [(x + i, y + j) for i, j in
+                             [(1, 0), (0, 1), (-1, 0), (0, -1)]]
+    res, res_p = [], []
+    s = copy.copy(s)
+    s_taken = set()
+    # assuming 1 connected component
+    for x in s: break
+    s.remove(x)
+    res.append(x)
+    p = list(x)[0]
+    res_p.append(p)
+    q = deque([p])
+    while q:
+        p = q.popleft()
+        for p1 in adjacent(*p):
+            e = frozenset([p, p1])
+            if e in s:
+                q.append(p1)
+                s.remove(e)
+                res.append(e)
+                res_p.append(p1)
+                break
+    return res, res_p
+
+
+def add_neighbour_walls(map_array, wall, unparsed_walls, parsed_walls, max_height, max_width):
+    x, y = wall
+    if x - 1 > 0 and is_wall(x - 1, y, map_array):
+        new_wall = (x - 1, y)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if y - 1 > 0 and is_wall(x, y - 1, map_array):
+        new_wall = (x, y - 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if x + 1 < max_width and is_wall(x + 1, y, map_array):
+        new_wall = (x + 1, y)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if x - 1 > 0 and y - 1 > 0 and is_wall(x - 1, y - 1, map_array):
+        new_wall = (x - 1, y - 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if y + 1 < max_height and is_wall(x, y + 1, map_array):
+        new_wall = (x, y + 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if y + 1 < max_height and x + 1 < max_width and is_wall(x + 1, y + 1, map_array):
+        new_wall = (x + 1, y + 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if x - 1 > 0 and y + 1 < max_height and is_wall(x - 1, y + 1, map_array):
+        new_wall = (x - 1, y + 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+    if x + 1 < max_width and y - 1 > 0 and is_wall(x + 1, y - 1, map_array):
+        new_wall = (x + 1, y - 1)
+        if new_wall not in parsed_walls:
+            unparsed_walls.add(new_wall)
+
+
+def is_wall(x, y, map_array):
+    return map_array[y][x] == 'T'
 
 
 def get_all_model_names(map_num):
