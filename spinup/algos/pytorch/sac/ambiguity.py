@@ -22,6 +22,7 @@ torch.manual_seed(SEED)
 def get_sac_path(agent_type, map_name='empty1', agent_name='rg', seed='42', discrete=True, state_visitation=False,
                  decay_param=None, pruning_constant=None, tau_decay=None, tau_constant=None):
     root = '/data/projects/punim1607/spinningup/data/'
+    # root = '/Users/alanlewis/PycharmProjects/DeceptiveReinforcementLearning/spinningup/data/'
     # find correct directory
     if map_name == 'test':
         folder = f'{root}test-{agent_name}/test-{agent_name}_s{seed}/'
