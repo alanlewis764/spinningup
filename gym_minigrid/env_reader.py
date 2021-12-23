@@ -293,3 +293,9 @@ def get_all_model_names(map_num):
         return ['rg', 'fg1', 'fg2']
     else:
         return ['rg', 'fg1', 'fg2', 'fg3', 'fg4']
+
+def get_all_models(map_num):
+    if map_num in {1, 2, 3, 4, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36}:
+        return [None, None, None]
+    else:
+        return [None, None, None, None, None]

@@ -4,7 +4,8 @@ import argparse
 import numpy as np
 import torch
 from collections import defaultdict
-from gym_minigrid.env_reader import read_map, read_grid_size, get_all_model_names, read_start, read_goals
+from gym_minigrid.env_reader import read_map, read_grid_size, get_all_model_names, read_start, read_goals, \
+    get_all_models
 from spinup.algos.pytorch.sac.sac_agent import SacFactory, SacBaseAgent
 from spinup.algos.pytorch.sac.ambiguity import OnlineACAmbiguityAgent, AmbiguityFactory
 from spinup.algos.pytorch.sac.intention_recognition import IntentionRecognitionFactory
@@ -123,6 +124,79 @@ def train_online_ambiguity_vs_tau_decay(map_num, discrete=True):
     pool.starmap(run_online_ac_ambiguity,
                  [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, tau_constant, tau_decay,
                    'tau_decay') for tau_decay in tau_decays])
+
+
+def online_agent_vs_training_cost(map_number, adaptive_pruning_constant=-100, pruning_decay=0.95, discrete=True,
+                                  reward_type='value_table', num_intervals=10):
+    size = read_grid_size(number=map_number)[0]
+    train_env, map_name = read_map(number=map_number, random_start=False, terminate_at_any_goal=False, goal_name='rg',
+                                   discrete=discrete, max_episode_steps=size ** 2, reward_type=reward_type)
+    test_env, map_name = read_map(number=map_number, random_start=False, terminate_at_any_goal=False, goal_name='rg',
+                                  discrete=discrete, max_episode_steps=size ** 2, destination_tolerance_range=2,
+                                  reward_type=reward_type)
+
+    all_models = get_all_models(map_num=map_number)
+    all_model_names = get_all_model_names(map_num=map_number)
+
+    policy_type = 'softmax'
+    experiment_name = f'interval_{map_name}{map_number}-online-ac-{policy_type}' if discrete else f'continuous-interval_{map_name}{map_number}-online-ac-{policy_type}'
+    agent = OnlineACAmbiguityAgent(
+        state_space=train_env.observation_space,
+        action_space=train_env.action_space,
+        name='IntervalOnlineAC',
+        all_models=all_models,
+        all_model_names=all_model_names,
+        env=test_env,
+        max_ep_len=size ** 2,
+        policy=policy_type,
+        experiment_name=experiment_name,
+        adaptive_pruning_constant=adaptive_pruning_constant,
+        pruning_decay=pruning_decay,
+        discrete=discrete,
+        start_steps=120000,
+        steps_per_epoch=(size ** 2) * 2,
+        num_epochs=200,
+        critic_lr=3e-4,
+        pi_lr=3e-4,
+        lr_decay=1,
+        tau=1,
+        tau_decay=0.975,
+        discount_rate=0.975,
+        alpha=0.2,
+        real_goal_pruning_constant=0,
+        q_gain_pruning_constant=0
+    )
+
+    path_costs_vs_train_step = defaultdict(float)
+    accumulated_deceptiveness_vs_train_step = defaultdict(float)
+    training_interval_steps = 120000 if len(all_model_names) == 3 else 150000
+    for i in range(num_intervals):
+        # do a round of training
+        agent.interval_train(my_train_env=train_env, num_steps=training_interval_steps)
+
+        # test the agent
+        rg_probs, path_cost = test_interval(map_number, agent_type=AmbiguityTypes.INTERVAL_ONLINE_SAC,
+                                            model_config='interval_online_sac', discrete=discrete)
+
+        # measure real goal probs at different stages to avoid high deceptiveness from agents that take lots of steps
+        rg_probs = convert_to_time_density(rg_probs).values()
+        accumulated_deceptiveness = sum(map(lambda p: 1 - p, rg_probs))
+        print(f"accumulated = {accumulated_deceptiveness}")
+        print(f"path cost = {path_cost}")
+        path_costs_vs_train_step[(training_interval_steps / 10) * (i + 1)] = path_cost
+        accumulated_deceptiveness_vs_train_step[(training_interval_steps / 10) * (i + 1)] = accumulated_deceptiveness
+
+    append_results_to_json(
+        fp=get_interval_accumulated_deceptiveness_json_path('interval_online_sac',
+                                                            discrete=discrete),
+        key=f'{map_name}{map_number}',
+        results=accumulated_deceptiveness_vs_train_step
+    )
+    append_results_to_json(
+        fp=get_interval_path_cost_json_path('interval_online_sac', discrete=discrete),
+        key=f'{map_name}{map_number}',
+        results=path_costs_vs_train_step
+    )
 
 
 def pretrained_agent_vs_training_cost(map_number, discrete=True, reward_type=None, num_intervals=10):
@@ -258,12 +332,12 @@ if __name__ == "__main__":
     print(f"agent_type = {agent_type}")
     print(f"reward_type = {reward_type}")
 
-
-
     if agent_type == 'interval_sac':
-        pretrained_agent_vs_training_cost(map_number=map_num, discrete=discrete, reward_type=reward_type, num_intervals=20)
+        pretrained_agent_vs_training_cost(map_number=map_num, discrete=discrete, reward_type=reward_type,
+                                          num_intervals=20)
     elif agent_type == 'interval_online_sac':
-        pass
+        online_agent_vs_training_cost(map_number=map_num, pruning_decay=0, discrete=discrete, reward_type=reward_type,
+                                      num_intervals=20)
     else:
         if policy == 'softmax':
             if hyperparam == 'pruning_constant':
