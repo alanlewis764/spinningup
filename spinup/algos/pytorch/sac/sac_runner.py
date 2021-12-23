@@ -13,7 +13,6 @@ from python.intention_recognition import IntentionRecognitionFactory
 from python.data_parsing import append_results_to_json, convert_to_time_density
 from display_utils import VideoViewer
 
-
 sacPathManager = path_manager.Sac()
 valueIterationPathManager = path_manager.ValueIteration()
 
@@ -52,31 +51,32 @@ def run_simple(agent_key='rg'):
     agent.train(train_env, test_env=test_env)
 
 
-def train_subagent(map_num, agent_name, discrete=True, render=False):
+def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type='value_table'):
     size = read_grid_size(number=map_num)[0]
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=(size**2), dilate=False)
+                                   discrete=discrete, max_episode_steps=(size ** 2), dilate=False,
+                                   reward_type=reward_type)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=(size**2), dilate=False)
+                                  discrete=discrete, max_episode_steps=(size ** 2), dilate=False,
+                                  reward_type=reward_type)
     experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
-    # experiment_name = 'test'
     agent = SacFactory.create(state_space=train_env.observation_space,
                               action_space=train_env.action_space,
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.1,
+                              alpha=0.2,
                               learning_decay=0.99,
                               discount_rate=0.975,
-                              max_ep_len=(size**2),
-                              steps_per_epoch=(size**2)*4,
+                              max_ep_len=(size ** 2),
+                              steps_per_epoch=(size ** 2) * 2,
                               start_steps=80000,
-                              num_epochs=100,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
                               batch_size=100,
                               hidden_dim=64,
-                              num_test_eps=1)
+                              num_test_eps=1,
+                              num_epochs=100)
     agent.train(train_env=train_env, test_env=test_env, render=render)
 
 
@@ -151,6 +151,6 @@ def run_honest_agent(map_num, discrete=True, render=False):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False)
-    # train_subagent(map_num=33, agent_name='rg', discrete=True)
+    # train_subagent(map_num=29, agent_name='rg', discrete=False, render=False)
+    train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
     # run_honest_agent(map_num=23, discrete=False, render=True)
