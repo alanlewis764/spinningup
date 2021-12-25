@@ -65,12 +65,12 @@ def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.2,
+                              alpha=0.005,
                               learning_decay=0.99,
                               discount_rate=0.975,
                               max_ep_len=(size ** 2),
                               steps_per_epoch=(size ** 2) * 2,
-                              start_steps=80000,
+                              start_steps=120000,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
                               batch_size=100,
@@ -151,6 +151,6 @@ def run_honest_agent(map_num, discrete=True, render=False):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    # train_subagent(map_num=29, agent_name='rg', discrete=False, render=False)
-    train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
+    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False, reward_type='value_table')
+    # train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
     # run_honest_agent(map_num=23, discrete=False, render=True)
