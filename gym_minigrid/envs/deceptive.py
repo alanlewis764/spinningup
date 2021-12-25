@@ -166,7 +166,7 @@ class DeceptiveEnv(MiniGridEnv):
                 done = True
             next_cell.reward = 0
 
-        if self.step_count >= self.max_steps:
+        if self.max_steps == self.step_count + 1:
             reward = self._reward()
             done = True
         #
