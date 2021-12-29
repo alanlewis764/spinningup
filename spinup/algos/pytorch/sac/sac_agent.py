@@ -159,7 +159,7 @@ class SacBaseAgent(ABC):
         # such that we bootstrap normally.
         # ignore the done signal if it comes from an artificial time horizon --> ie it comes from an artificial
         # ending rather than being a result of the agent's state
-        if done and reward <= 0:
+        if done and reward < 10:
             done = False
 
         # if done and reward > 90:
@@ -251,12 +251,9 @@ class SacBaseAgent(ABC):
         start_time = time.time()
         state = train_env.reset()
         self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
-        ep_reward = 0
 
         # collect experiences and update every epoch
         for t in range(total_steps):
-            # train_env.render()
-
             # at the start, randomly sample actions from a uniform distribution for better exploration
             # only afterwards use the learned policy...
             if t > self.start_steps:
@@ -265,16 +262,12 @@ class SacBaseAgent(ABC):
                 action = train_env.action_space.sample()
 
             next_state, reward, done, _ = train_env.step(action)
-            ep_reward += reward['rg']
             # done = False if self.episode_length == self.max_ep_len else done
             self.add_experience(state, action, reward, next_state, done)
             state = next_state
 
             # end of trajectory
             if done or self.episode_length == self.max_ep_len:
-                print("episode steps = ", self.episode_length)
-                print("episode rewards =", ep_reward)
-                ep_reward = 0
                 self.end_trajectory()
                 self.train_state_visitation_dict[str(tuple(map(int, state)))] += 1
                 state = train_env.reset()
@@ -390,8 +383,8 @@ class ContinuousSacAgent(SacBaseAgent):
         # make optimisers for the actor and the critic
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
-        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=0.95)
-        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=0.95)
+        self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=1)
+        self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=1)
 
         # set up model saving
         self.logger.setup_pytorch_saver(self.actor_critic)
@@ -406,7 +399,7 @@ class ContinuousSacAgent(SacBaseAgent):
         # do Bellman backup for Q functions
         with torch.no_grad():
             # use the target network to get the actions given the next state
-            next_actions, next_logps = self.target_actor_critic.pi(next_states)
+            next_actions, next_logps = self.actor_critic.pi(next_states)
 
             # target q-values use the next states and next actions
             target_q1 = self.target_actor_critic.q1(next_states, next_actions)
@@ -549,7 +542,7 @@ class DiscreteSacAgent(SacBaseAgent):
             q2_pi = self.actor_critic.q2(states)
 
         # calculate expectations of entropy
-        entropies = -torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
+        entropies = torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
 
         # calculate expectations of Q (the q-value for each action, weighted by the probability of it occurring).
         q1_pi = torch.sum(q1_pi * action_probs, dim=1, keepdim=True)
@@ -558,7 +551,7 @@ class DiscreteSacAgent(SacBaseAgent):
         q_pi = torch.min(q1_pi, q2_pi)
 
         # calculate entropy regularised policy loss
-        loss_pi = (-self.alpha * entropies - q_pi).mean()
+        loss_pi = (self.alpha * entropies - q_pi).mean()
 
         pi_info = dict(LogPi=entropies.detach().numpy())
 
@@ -590,9 +583,9 @@ class SacFactory:
                                     alpha=alpha,
                                     steps_per_epoch=steps_per_epoch,
                                     start_steps=start_steps,
-                                    num_test_episodes=num_test_eps,
-                                    save_freq=1,
                                     policy_update_delay=1,
+                                    save_freq=1,
+                                    num_test_episodes=1,
                                     seed=42,
                                     polyak=0.995)
         else:
@@ -606,10 +599,10 @@ class SacFactory:
                                       discount_rate=discount_rate,
                                       hidden_dimension=hidden_dim,
                                       batch_size=batch_size,
+                                      alpha=alpha,
+                                      max_ep_len=max_ep_len,
+                                      steps_per_epoch=steps_per_epoch,
                                       num_test_episodes=num_test_eps,
                                       start_steps=40000,
-                                      max_ep_len=49 ** 2,
-                                      steps_per_epoch=10000,
                                       seed=42,
-                                      alpha=0.2,
                                       polyak=0.995)

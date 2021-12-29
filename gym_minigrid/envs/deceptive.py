@@ -29,7 +29,9 @@ class DeceptiveEnv(MiniGridEnv):
             terminate_at_any_goal=True,
             goal_name='rg',
             max_episode_steps=49 ** 2,
-            dilate=False
+            dilate=False,
+            value_tables=None,
+            reward_type='path_cost'
     ):
         if not random_start:
             self.agent_start_pos = agent_start_pos
@@ -39,6 +41,11 @@ class DeceptiveEnv(MiniGridEnv):
             self.agent_start_dir = None
 
         self.candidate_goals = candidate_goals
+
+        self.reward_type = reward_type
+        if reward_type == 'value_table':
+            self.value_tables = value_tables
+
         # self.goal_pos = (candidate_goals[0].x, candidate_goals[0].y)
         self.goal_name = goal_name
         self.goal_pos = None
@@ -58,7 +65,8 @@ class DeceptiveEnv(MiniGridEnv):
 
     @classmethod
     def load_from_file(cls, fp, optcost, start_pos, real_goal, fake_goals, random_start=False,
-                       terminate_at_any_goal=True, goal_name='rg', max_episode_steps=49 ** 2, dilate=False):
+                       terminate_at_any_goal=True, goal_name='rg', max_episode_steps=49 ** 2, dilate=False,
+                       value_tables=None, reward_type='path_cost'):
         with open(fp, 'r') as f:
             type = f.readline().split(" ")[1]
             height = int(f.readline().split(" ")[1])
@@ -85,7 +93,9 @@ class DeceptiveEnv(MiniGridEnv):
                    max_episode_steps=max_episode_steps,
                    terminate_at_any_goal=terminate_at_any_goal,
                    goal_name=goal_name,
-                   dilate=dilate)
+                   dilate=dilate,
+                   value_tables=value_tables,
+                   reward_type=reward_type)
 
     def _gen_grid(self, width, height):
         # Create an empty grid
@@ -117,13 +127,10 @@ class DeceptiveEnv(MiniGridEnv):
         self.mission = "get to the green goal square as deceptively as possible"
 
     def step(self, action):
-        self.step_count += 1
-
-        reward = 100
-        candidate_rewards = {goal.name: 0 for goal in self.candidate_goals}
-
         done = False
+        self.step_count += 1
         self.action = action
+        candidate_rewards = self.reward()
         # Get the position in front of the agent
         next_pos = self.next_pos
 
@@ -142,45 +149,57 @@ class DeceptiveEnv(MiniGridEnv):
             if next_cell is None or next_cell.can_overlap():
                 self.agent_pos = next_pos
 
-        # Done action (not used by default)
-        if self.action == self.actions.done:
-            candidate_rewards = {goal.name: -np.sqrt(2) for goal in self.candidate_goals}
-            # done = True
-            pass
-        elif self.action == self.actions.up or self.action == self.actions.down or self.action == self.actions.left or self.action == self.actions.right:
-            candidate_rewards = {goal.name: -1 for goal in self.candidate_goals}
-            self.normal_moves += 1
-        elif self.action == self.actions.up_left or self.action == self.actions.up_right or self.action == self.actions.down_left or self.action == self.actions.down_right:
-            candidate_rewards = {goal.name: -np.sqrt(2) for goal in self.candidate_goals}
-            self.diag_moves += 1
-        else:
-            raise ValueError("Invalid move")
-
         if next_cell != None and next_cell.type == 'goal':
             candidate_rewards[next_cell.name] = next_cell.reward
             if self.terminate_at_any_goal or next_cell.name == self.goal_name:
-                reward = self._reward()
-                # we should just be able to hash into the candidate_reward set and change the reward value according to the
-                # reward function
-                # candidate_rewards[next_cell.name] = self._reward()
                 done = True
             next_cell.reward = 0
 
         if self.max_steps == self.step_count + 1:
-            reward = self._reward()
             done = True
-        #
-        # for candidate_goal in self.candidate_goals:
-        #     candidate_rewards[candidate_goal.name] += self.candidate_reward(candidate_goal=candidate_goal,
-        #                                                                     agent_pos=self.agent_pos)
-
-        # if done:
-        #     for candidate_goal in self.candidate_goals:
-        #         candidate_rewards[candidate_goal.name] += (100 - self.distance(candidate_goal, self.agent_pos))
 
         obs = self.gen_obs()
 
         return obs, candidate_rewards, done, {}
+
+    def reward(self):
+        if self.reward_type == 'value_table':
+            return self.value_table_reward()
+        elif self.reward_type == 'distance':
+            return self.distance_reward()
+        else:
+            return self.path_cost_reward()
+
+    def value_table_reward(self):
+        candidate_rewards = {}
+        for candidate_goal in self.candidate_goals:
+            value_table = self.value_tables[candidate_goal.name]
+            value = value_table[int(self.agent_pos[1])][int(self.agent_pos[0])]
+            candidate_rewards[candidate_goal.name] = value / 100
+        return candidate_rewards
+
+    def distance_reward(self):
+        candidate_rewards = {}
+        for candidate_goal in self.candidate_goals:
+            distance_from_goal = self.distance(candidate_goal=candidate_goal, agent_pos=self.agent_pos)
+            distance_from_start = self.distance(candidate_goal=candidate_goal, agent_pos=self.agent_start_pos)
+            candidate_rewards[candidate_goal.name] = - distance_from_goal / distance_from_start
+        return candidate_rewards
+
+    def path_cost_reward(self):
+        candidate_rewards = {}
+        for candidate_goal in self.candidate_goals:
+            if self.action == self.actions.done:
+                candidate_rewards[candidate_goal.name] = -np.sqrt(2)
+            elif self.action == self.actions.up or self.action == self.actions.down or self.action == self.actions.left or self.action == self.actions.right:
+                candidate_rewards[candidate_goal.name] = -1
+                self.normal_moves += 1
+            elif self.action == self.actions.up_left or self.action == self.actions.up_right or self.action == self.actions.down_left or self.action == self.actions.down_right:
+                candidate_rewards[candidate_goal.name] = -np.sqrt(2)
+                self.diag_moves += 1
+            else:
+                raise ValueError("Invalid move")
+        return candidate_rewards
 
     @staticmethod
     def distance(candidate_goal, agent_pos):
@@ -190,18 +209,8 @@ class DeceptiveEnv(MiniGridEnv):
     def manhattan_distance(candidate_goal, agent_pos):
         return (candidate_goal.x - agent_pos[0]) + (candidate_goal.y - agent_pos[1])
 
-    def candidate_reward(self, candidate_goal, agent_pos):
-        distance_from_goal = self.distance(candidate_goal=candidate_goal, agent_pos=agent_pos)
-        distance_from_start = self.distance(candidate_goal=candidate_goal, agent_pos=self.agent_start_pos)
-        return - distance_from_goal / distance_from_start
-
     def reset(self):
         # reset reward
         for goal in self.candidate_goals:
             goal.reward = 100
         return super().reset()
-
-# register(
-#     id='MiniGrid-Deceptive',
-#     entry_point='gym_minigrid.envs:DeceptiveEnv'
-# )

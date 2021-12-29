@@ -39,7 +39,9 @@ def read_map(number, random_start=True, terminate_at_any_goal=True, goal_name='r
                                                             max_episode_steps=max_episode_steps,
                                                             terminate_at_any_goal=terminate_at_any_goal,
                                                             goal_name=goal_name,
-                                                            dilate=dilate)), map_name
+                                                            dilate=dilate,
+                                                            value_tables=value_tables,
+                                                            reward_type=reward_type)), map_name
     else:
         return StateBasedMDPNavigation2DEnv.load_from_file(fp=f'{MAPS_ROOT}/{map_name}.map',
                                                            optcost=optcost,
@@ -117,7 +119,7 @@ def read_name(number, discrete=True):
 
 
 def read_grid_size(number):
-    if number < 33:
+    if number < 25:
         return 49, 49
     else:
         return 100, 100

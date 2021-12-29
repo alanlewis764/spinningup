@@ -127,7 +127,7 @@ def train_online_ambiguity_vs_tau_decay(map_num, discrete=True):
 
 
 def online_agent_vs_training_cost(map_number, adaptive_pruning_constant=-100, pruning_decay=0.95, discrete=True,
-                                  reward_type='value_table', num_intervals=10):
+                                  reward_type='value_table', num_intervals=10, alpha=0.2):
     size = read_grid_size(number=map_number)[0]
     train_env, map_name = read_map(number=map_number, random_start=False, terminate_at_any_goal=False, goal_name='rg',
                                    discrete=discrete, max_episode_steps=size ** 2, reward_type=reward_type)
@@ -153,7 +153,8 @@ def online_agent_vs_training_cost(map_number, adaptive_pruning_constant=-100, pr
         adaptive_pruning_constant=adaptive_pruning_constant,
         pruning_decay=pruning_decay,
         discrete=discrete,
-        start_steps=120000,
+        alpha=alpha,
+        start_steps=(size ** 2) * 2 * 4,
         steps_per_epoch=(size ** 2) * 2,
         num_epochs=200,
         critic_lr=3e-4,
@@ -162,7 +163,6 @@ def online_agent_vs_training_cost(map_number, adaptive_pruning_constant=-100, pr
         tau=1,
         tau_decay=0.975,
         discount_rate=0.975,
-        alpha=0.2,
         real_goal_pruning_constant=0,
         q_gain_pruning_constant=0
     )
@@ -199,7 +199,7 @@ def online_agent_vs_training_cost(map_number, adaptive_pruning_constant=-100, pr
     )
 
 
-def pretrained_agent_vs_training_cost(map_number, discrete=True, reward_type=None, num_intervals=10):
+def pretrained_agent_vs_training_cost(map_number, discrete=True, reward_type=None, num_intervals=10, alpha=0.2):
     # this doesn't actually get used, it just defines the state and action space for the agent
     train_env, map_name = read_map(number=map_number, discrete=discrete, random_start=False, reward_type=reward_type)
     size = read_grid_size(number=map_number)[0]
@@ -212,12 +212,12 @@ def pretrained_agent_vs_training_cost(map_number, discrete=True, reward_type=Non
                           subagent_name=name,
                           experiment_name=experiment_name,
                           discrete=discrete,
-                          alpha=0.1,
+                          alpha=alpha,
                           learning_decay=0.99,
                           discount_rate=0.975,
                           max_ep_len=(size ** 2),
                           steps_per_epoch=(size ** 2) * 2,
-                          start_steps=80000,
+                          start_steps=(size ** 2) * 2 * 2,
                           pi_lr=3e-4,
                           critic_lr=3e-4,
                           num_test_eps=1)
@@ -317,6 +317,7 @@ if __name__ == "__main__":
     parser.add_argument('--discrete', type=bool, default=False)
     parser.add_argument('--agent_type', type=str, default='hyperparam')
     parser.add_argument('--reward_type', type=str, default='path_cost')
+    parser.add_argument('--alpha', type=float, default=0.2)
     args = parser.parse_args()
 
     map_num = args.map_num
@@ -325,19 +326,22 @@ if __name__ == "__main__":
     hyperparam = args.hyperparam
     agent_type = args.agent_type
     reward_type = args.reward_type
+    alpha = args.alpha
+
     print(f"map num = {map_num}")
     print(f"discrete = {discrete}")
     print(f"policy = {policy}")
     print(f"hyperparam = {hyperparam}")
     print(f"agent_type = {agent_type}")
     print(f"reward_type = {reward_type}")
+    print(f"alpha = {alpha}")
 
     if agent_type == 'interval_sac':
         pretrained_agent_vs_training_cost(map_number=map_num, discrete=discrete, reward_type=reward_type,
-                                          num_intervals=20)
+                                          num_intervals=20, alpha=alpha)
     elif agent_type == 'interval_online_sac':
         online_agent_vs_training_cost(map_number=map_num, pruning_decay=0, discrete=discrete, reward_type=reward_type,
-                                      num_intervals=20)
+                                      num_intervals=20, alpha=alpha)
     else:
         if policy == 'softmax':
             if hyperparam == 'pruning_constant':

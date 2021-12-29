@@ -1,15 +1,16 @@
 import multiprocessing as mp
 import torch
+import numpy as np
 from copy import deepcopy
 from collections import defaultdict
 from gym_minigrid.envs.deceptive import DeceptiveEnv
 from python.minigrid_env_utils import SimpleObsWrapper
-from python.runners.env_reader import read_map, read_grid_size, read_goals, read_start
+from python.runners.env_reader import read_map, read_grid_size, read_goals, read_start, read_name
 from spinningup.spinup.algos.pytorch.sac.sac_agent import DiscreteSacAgent, ContinuousSacAgent, SacFactory
 from python.path_manager import get_all_model_names
 import python.path_manager as path_manager
 from python.intention_recognition import IntentionRecognitionFactory
-from vis_tools import append_results_to_json, convert_to_time_density
+from python.data_parsing import append_results_to_json, convert_to_time_density
 from display_utils import VideoViewer
 
 sacPathManager = path_manager.Sac()
@@ -50,28 +51,33 @@ def run_simple(agent_key='rg'):
     agent.train(train_env, test_env=test_env)
 
 
-def train_subagent(map_num, agent_name, discrete=True, dilate=False):
+def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type='value_table', dilate=False,
+                   max_speed=1):
+    size = read_grid_size(number=map_num)[0]
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=100**2, dilate=dilate)
+                                   discrete=discrete, max_episode_steps=(size ** 2), dilate=dilate, max_speed=max_speed,
+                                   reward_type=reward_type)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=100**2, dilate=dilate)
+                                  discrete=discrete, max_episode_steps=(size ** 2), dilate=dilate, max_speed=max_speed,
+                                  reward_type=reward_type)
     experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
     agent = SacFactory.create(state_space=train_env.observation_space,
                               action_space=train_env.action_space,
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.3,
+                              alpha=0.2,
                               learning_decay=0.99,
                               discount_rate=0.975,
-                              max_ep_len=100**2,
-                              steps_per_epoch=(100**2)*2,
-                              start_steps=80000,
-                              num_epochs=100,
+                              max_ep_len=(size ** 2),
+                              steps_per_epoch=(size ** 2) * 2,
+                              start_steps=120000,
                               pi_lr=3e-4,
                               critic_lr=3e-4,
-                              batch_size=256,
-                              hidden_dim=64)
+                              batch_size=100,
+                              hidden_dim=64,
+                              num_test_eps=1,
+                              num_epochs=100)
     agent.train(train_env=train_env, test_env=test_env)
 
 
@@ -83,7 +89,7 @@ def train_subagents_parallel():
         pool.starmap(train_subagent, [(map_number, name, discrete) for name in agent_names])
 
 
-def run_honest_agent(map_num, discrete=True):
+def run_honest_agent(map_num, discrete=True, render=False):
     env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name='rg',
                              discrete=discrete)
     video_viewer = VideoViewer()
@@ -107,6 +113,8 @@ def run_honest_agent(map_num, discrete=True):
     #                                                            goals=goals,
     #                                                            map_num=map_num)
 
+    # debug: env.state, env.value_tables['rg'][int(env.state[1])][int(env.state[0])], env.value_tables['rg'][37][42]
+
     intention_recognition = None
 
     state_visitation_dict = defaultdict(int)
@@ -117,15 +125,18 @@ def run_honest_agent(map_num, discrete=True):
     max_steps = 2000
 
     while not done and num_steps < max_steps:
-        # env.render()
+        if render:
+            env.render()
         state_visitation_dict[str(state)] += 1
         state = torch.as_tensor(state, dtype=torch.float32)
-        action = int(agent.act(state, deterministic=True))
+        action = agent.act(state, deterministic=True)
+        if discrete:
+            action = action[0][0]
         path_cost += 1
 
         if intention_recognition is not None:
             _ = intention_recognition.predict_goal_probabilities(state, action)
-
+        print('action:', action)
         next_state, reward, done, info = env.step(action)
         state = next_state
         num_steps += 1
@@ -143,6 +154,8 @@ def run_honest_agent(map_num, discrete=True):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=33, agent_name='rg', discrete=True)
-    # run_honest_agent(map_num=33, discrete=True)
-
+    reward_type = 'value_table'
+    print(reward_type)
+    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False, reward_type=reward_type, dilate=True, max_speed=2)
+    # train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
+    # run_honest_agent(map_num=1, discrete=True, render=False)
