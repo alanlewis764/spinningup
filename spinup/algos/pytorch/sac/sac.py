@@ -27,7 +27,7 @@ class ReplayBuffer:
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
-        self.rew_buf[self.ptr] = rew
+        self.rew_buf[self.ptr] = rew['rg']
         self.done_buf[self.ptr] = done
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
@@ -286,7 +286,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=1,
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
-        env.render()
+        # env.render()
 
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards, 

@@ -186,7 +186,7 @@ class DiscreteMLPActorCritic(nn.Module):
             self.pi = CategoricalActor(obs_dim, act_dim, hidden_sizes, activation)
             self.q1 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
             self.q2 = DiscreteMLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
-        # self.v = DiscreteMLPValueFunction(obs_dim, hidden_sizes, activation)
+        # self.value = DiscreteMLPValueFunction(obs_dim, hidden_sizes, activation)
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
@@ -271,6 +271,17 @@ class SquashedGaussianMLPActor(nn.Module):
         return pi_action, logp_pi
 
 
+class MLPValueFunction(nn.Module):
+
+    def __init__(self, obs_dim, hidden_sizes, activation):
+        super().__init__()
+        self.value = mlp([obs_dim] + list(hidden_sizes) + [1], activation)
+
+    def forward(self, obs):
+        value = self.value(obs)
+        return torch.squeeze(value, -1)
+
+
 class MLPQFunction(nn.Module):
 
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
@@ -296,6 +307,7 @@ class MLPActorCritic(nn.Module):
         self.pi = SquashedGaussianMLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit)
         self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        # self.value = MLPValueFunction(obs_dim, hidden_sizes, activation)
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():

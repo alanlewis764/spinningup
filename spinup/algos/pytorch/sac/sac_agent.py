@@ -114,18 +114,35 @@ class SacBaseAgent(ABC):
         self.replay_buffer = None
         self.pi_optimiser = None
         self.q_optimiser = None
+        # self.value_optimiser = None
         self.q_lr_schedule = None
         self.pi_lr_schedule = None
+
+        # self.log_alpha = torch.zeros(1, requires_grad=True)
+        # self.alpha = self.log_alpha.detach().exp()
+        # self.alpha_optimiser = Adam([self.log_alpha], lr=self.pi_lr)
 
         # video viewer to look at agent performance
         self.video_viewer = VideoViewer()
 
     def update(self, data, time_step):
         # run a gradient descent step for q functions
+
         self.q_optimiser.zero_grad()
         loss_q, q_info = self.compute_loss_q(data)
         loss_q.backward()
         self.q_optimiser.step()
+
+        # self.alpha_optimiser.zero_grad()
+        # alpha_loss = self.compute_loss_alpha(data)
+        # alpha_loss.backward()
+        # self.alpha_optimiser.step()
+        # self.alpha = self.log_alpha.detach().exp()
+
+        # self.value_optimiser.zero_grad()
+        # loss_value = self.compute_loss_value(data)
+        # loss_value.backward()
+        # self.value_optimiser.step()
 
         # record the losses
         self.logger.store(LossQ=loss_q.item(), **q_info)
@@ -172,7 +189,7 @@ class SacBaseAgent(ABC):
         # such that we bootstrap normally.
         # ignore the done signal if it comes from an artificial time horizon --> ie it comes from an artificial
         # ending rather than being a result of the agent's state
-        if done and reward <= 0:
+        if done and reward < 10:
             done = False
 
         # if done and reward > 90:
@@ -357,6 +374,14 @@ class SacBaseAgent(ABC):
     def compute_loss_pi(self, data):
         raise NotImplementedError
 
+    # @abstractmethod
+    # def compute_loss_alpha(self, data):
+    #     raise NotImplementedError
+
+    # @abstractmethod
+    # def compute_loss_value(self, data):
+    #     raise NotImplementedError
+
     @abstractmethod
     def get_action(self, state, deterministic=False):
         raise NotImplementedError
@@ -404,9 +429,11 @@ class ContinuousSacAgent(SacBaseAgent):
         # make optimisers for the actor and the critic
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
+        self.value_optimiser = Adam(self.actor_critic.value.parameters(), lr=self.vf_lr)
         self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=1)
         self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=1)
 
+        # self.target_entropy = -np.product(self.action_dim)
         # set up model saving
         self.logger.setup_pytorch_saver(self.actor_critic)
 
@@ -420,7 +447,7 @@ class ContinuousSacAgent(SacBaseAgent):
         # do Bellman backup for Q functions
         with torch.no_grad():
             # use the target network to get the actions given the next state
-            next_actions, next_logps = self.target_actor_critic.pi(next_states)
+            next_actions, next_logps = self.actor_critic.pi(next_states)
 
             # target q-values use the next states and next actions
             target_q1 = self.target_actor_critic.q1(next_states, next_actions)
@@ -428,6 +455,10 @@ class ContinuousSacAgent(SacBaseAgent):
 
             # use the minimum of the two as the actual target to avoid over-estimation problems
             target_q = torch.min(target_q1, target_q2)
+
+            # values_ = self.target_actor_critic.value(next_states)
+            # values_[dones.bool()] = 0
+            # backup = rewards + self.discount_rate * (1 - dones) * values_
 
             # determine backup (see SAC paper for more details on this derivation)
             backup = rewards + self.discount_rate * (1 - dones) * (target_q - self.alpha * next_logps)
@@ -457,6 +488,31 @@ class ContinuousSacAgent(SacBaseAgent):
         pi_info = dict(LogPi=logp.detach().numpy())
 
         return loss_pi, pi_info
+
+    # def compute_loss_value(self, data):
+    #     states, actions, rewards, next_states, dones = data['obs'], data['act'], data['rew'], data['next_obs'], data[
+    #         'done']
+    #
+    #     values = self.actor_critic.value(states)
+    #
+    #     with torch.no_grad():
+    #         # use the target network to get the actions given the next state
+    #         resampled_actions, logps = self.target_actor_critic.pi(states)
+    #         q1 = self.actor_critic.q1(states, resampled_actions)
+    #         q2 = self.actor_critic.q2(states, resampled_actions)
+    #
+    #     # use the minimum of the two as the actual target to avoid over-estimation problems
+    #     critic_values = torch.min(q1, q2)
+    #     target_values = critic_values - self.alpha * logps
+    #     loss_value = 0.5 * ((values - target_values) ** 2).mean()
+    #
+    #     return loss_value
+
+    # def compute_loss_alpha(self, data):
+    #     states = data['obs']
+    #     actions, logp = self.actor_critic.pi(states)
+    #     alpha_loss = -(self.log_alpha * (logp.detach() + self.target_entropy)).mean()
+    #     return alpha_loss
 
     def get_action(self, state, deterministic=False):
         return self.actor_critic.act(torch.as_tensor(state, dtype=torch.float32), deterministic=deterministic)
@@ -500,6 +556,8 @@ class DiscreteSacAgent(SacBaseAgent):
         self.learning_decay = learning_decay
         self.pi_optimiser = Adam(self.actor_critic.pi.parameters(), lr=self.pi_lr)
         self.q_optimiser = Adam(self.q_params, lr=self.vf_lr)
+        # self.value_optimiser = Adam(self.actor_critic.value.parameters(), lr=self.vf_lr)
+        # self.target_entropy = -np.product(self.action_dim)
         self.pi_lr_schedule = ExponentialLR(optimizer=self.pi_optimiser, gamma=self.learning_decay)
         self.q_lr_schedule = ExponentialLR(optimizer=self.q_optimiser, gamma=self.learning_decay)
 
@@ -539,6 +597,10 @@ class DiscreteSacAgent(SacBaseAgent):
             assert rewards.shape == target_q.shape == dones.shape == log_pi_next_actions.shape, \
                 "Rewards, dones and q values do not have the same dimension"
 
+            # values_ = self.target_actor_critic.value(next_states)
+            # values_ = values_.unsqueeze(-1)
+            # backup = rewards + self.discount_rate * (1 - dones) * values_
+
             # determine backup (see SAC paper for more details on this derivation)
             backup = rewards + self.discount_rate * (1 - dones) * (target_q - self.alpha * log_pi_next_actions)
 
@@ -563,7 +625,7 @@ class DiscreteSacAgent(SacBaseAgent):
             q2_pi = self.actor_critic.q2(states)
 
         # calculate expectations of entropy
-        entropies = -torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
+        entropies = torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
 
         # calculate expectations of Q (the q-value for each action, weighted by the probability of it occurring).
         q1_pi = torch.sum(q1_pi * action_probs, dim=1, keepdim=True)
@@ -572,11 +634,38 @@ class DiscreteSacAgent(SacBaseAgent):
         q_pi = torch.min(q1_pi, q2_pi)
 
         # calculate entropy regularised policy loss
-        loss_pi = (-self.alpha * entropies - q_pi).mean()
+        loss_pi = (self.alpha * entropies - q_pi).mean()
 
         pi_info = dict(LogPi=entropies.detach().numpy())
 
         return loss_pi, pi_info
+    #
+    # def compute_loss_value(self, data):
+    #     states, actions, rewards, next_states, dones = data['obs'], data['act'], data['rew'], data['next_obs'], data[
+    #         'done']
+    #
+    #     values = self.actor_critic.value(states)
+    #
+    #     # with torch.no_grad():
+    #     #     # use the target network to get the actions given the next state
+    #     #     resampled_actions, resampled_action_probs, log_resampled_action_probs = self.target_actor_critic.pi(states)
+    #     #     q1 = self.actor_critic.q1(states)
+    #     #     q2 = self.actor_critic.q2(states)
+    #     #
+    #     #     target_values = torch.sum(
+    #     #         (torch.min(q1, q2) - self.alpha * log_resampled_action_probs) * resampled_action_probs,
+    #     #         dim=1,
+    #     #         keepdim=True
+    #     #     )
+    #     #
+    #     # #     q1 = torch.sum(q1 * resampled_action_probs, dim=1, keepdim=True)
+    #     # #     q2 = torch.sum(q2 * resampled_action_probs, dim=1, keepdim=True)
+    #     # #
+    #     # # # use the minimum of the two as the actual target to avoid over-estimation problems
+    #     # # critic_values = torch.min(q1, q2)
+    #     # # target_values = critic_values - self.alpha * log_resampled_action_probs
+    #     # loss_value = 0.5 * ((values - target_values) ** 2).mean()
+    #     # return loss_value
 
     def get_action(self, state, deterministic=False):
         action = self.actor_critic.act(torch.as_tensor(state, dtype=torch.float32), deterministic=deterministic)

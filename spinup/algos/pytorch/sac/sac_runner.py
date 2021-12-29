@@ -51,13 +51,14 @@ def run_simple(agent_key='rg'):
     agent.train(train_env, test_env=test_env)
 
 
-def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type='value_table'):
+def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type='value_table', dilate=False,
+                   max_speed=1):
     size = read_grid_size(number=map_num)[0]
     train_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                   discrete=discrete, max_episode_steps=(size ** 2), dilate=False,
+                                   discrete=discrete, max_episode_steps=(size ** 2), dilate=dilate, max_speed=max_speed,
                                    reward_type=reward_type)
     test_env, map_name = read_map(map_num, random_start=False, terminate_at_any_goal=False, goal_name=agent_name,
-                                  discrete=discrete, max_episode_steps=(size ** 2), dilate=False,
+                                  discrete=discrete, max_episode_steps=(size ** 2), dilate=dilate, max_speed=max_speed,
                                   reward_type=reward_type)
     experiment_name = f'pretrained-sac-{map_name}{map_num}' if discrete else f'continuous-pretrained-sac-{map_name}{map_num}'
     agent = SacFactory.create(state_space=train_env.observation_space,
@@ -65,7 +66,7 @@ def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.005,
+                              alpha=0.2,
                               learning_decay=0.99,
                               discount_rate=0.975,
                               max_ep_len=(size ** 2),
@@ -129,11 +130,13 @@ def run_honest_agent(map_num, discrete=True, render=False):
         state_visitation_dict[str(state)] += 1
         state = torch.as_tensor(state, dtype=torch.float32)
         action = agent.act(state, deterministic=True)
+        if discrete:
+            action = action[0][0]
         path_cost += 1
 
         if intention_recognition is not None:
             _ = intention_recognition.predict_goal_probabilities(state, action)
-
+        print('action:', action)
         next_state, reward, done, info = env.step(action)
         state = next_state
         num_steps += 1
@@ -151,6 +154,8 @@ def run_honest_agent(map_num, discrete=True, render=False):
 if __name__ == '__main__':
     # run_subagents_parallel()
     # for i in range(21, 24):
-    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False, reward_type='value_table')
+    reward_type = 'value_table'
+    print(reward_type)
+    train_subagent(map_num=32, agent_name='rg', discrete=False, render=False, reward_type=reward_type, dilate=True, max_speed=2)
     # train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
-    # run_honest_agent(map_num=23, discrete=False, render=True)
+    # run_honest_agent(map_num=1, discrete=True, render=False)
