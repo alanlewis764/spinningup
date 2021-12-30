@@ -117,10 +117,10 @@ def train_online_ambiguity_vs_tau_constant(map_num, discrete=True, alpha=0.2, re
 
 def train_online_ambiguity_vs_tau_decay(map_num, discrete=True, alpha=0.2, reward_type='path_cost'):
     policy = 'softmax'
-    tau_constant = 1.0
-    tau_decays = [1, 0.99, 0.975, 0.95, 0.9, 0.5]
+    tau_constant = 5.0
+    tau_decays = [1, 0.99, 0.95, 0.9, 0.75, 0.5]
     decay_param = 0.90
-    adaptive_pruning_constant = 0
+    adaptive_pruning_constant = 10
     pool = mp.Pool(len(tau_decays))
     pool.starmap(run_online_ac_ambiguity,
                  [(map_num, policy, discrete, adaptive_pruning_constant, decay_param, tau_constant, tau_decay, alpha,
