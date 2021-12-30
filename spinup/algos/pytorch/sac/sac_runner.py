@@ -66,7 +66,7 @@ def train_subagent(map_num, agent_name, discrete=True, render=False, reward_type
                               subagent_name=agent_name,
                               experiment_name=experiment_name,
                               discrete=discrete,
-                              alpha=0.2,
+                              alpha=0.01,
                               learning_decay=0.99,
                               discount_rate=0.975,
                               max_ep_len=(size ** 2),
@@ -156,6 +156,6 @@ if __name__ == '__main__':
     # for i in range(21, 24):
     reward_type = 'value_table'
     print(reward_type)
-    train_subagent(map_num=31, agent_name='rg', discrete=False, render=False, reward_type=reward_type, dilate=True, max_speed=2)
+    train_subagent(map_num=31, agent_name='rg', discrete=True, render=False, reward_type=reward_type)
     # train_subagent(map_num=33, agent_name='rg', discrete=True, reward_type='value_table')
     # run_honest_agent(map_num=1, discrete=True, render=False)
